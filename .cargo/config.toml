@@ -1,0 +1,14 @@
+[target.xtensa-esp32-none-elf]
+runner = "flash_board.ps1"
+
+[args]
+
+[env]
+
+[build]
+rustflags = ["-C", "link-arg=-nostartfiles"]
+
+target = "xtensa-esp32-none-elf"
+
+[unstable]
+build-std = ["core"]
