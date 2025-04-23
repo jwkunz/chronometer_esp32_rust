@@ -77,6 +77,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chronometer"
+version = "0.1.0"
+dependencies = [
+ "critical-section",
+ "esp-hal",
+ "esp-println",
+]
+
+[[package]]
 name = "critical-section"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -723,15 +732,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "rust_hello_world"
-version = "0.1.0"
-dependencies = [
- "critical-section",
- "esp-hal",
- "esp-println",
 ]
 
 [[package]]

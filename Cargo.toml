@@ -1,6 +1,6 @@
 [package]
 edition = "2021"
-name = "rust_hello_world"
+name = "chronometer"
 version = "0.1.0"
 
 [[bin]]
