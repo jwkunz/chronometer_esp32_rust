@@ -1,3 +1,3 @@
 #![no_std]
-pub mod software_spi_driver;
 pub mod speed_trap;
+pub mod spi_master_blocking;
