@@ -43,14 +43,14 @@ pub struct SpiPinsMaster<'a> {
 }
 
 /// SPI master implementation with blocking operations.
-pub struct SpiMasterBlocking<'a> {
+pub struct SpiMasterCore<'a> {
     /// SPI pins used by the master.
     pins: SpiPinsMaster<'a>,
     /// Configuration for the SPI master.
     config: SpiConfig,
 }
 
-impl<'a> SpiMasterBlocking<'a> {
+impl<'a> SpiMasterCore<'a> {
     /// Creates a new instance of `SpiMasterBlocking`.
     ///
     /// # Arguments
@@ -167,37 +167,38 @@ impl<'a> SpiMasterBlocking<'a> {
             *x &= !(1 << bit_index);
         }
     }
+}
 
-    /// Performs a full-duplex SPI transfer of a single byte.
-    ///
-    /// # Arguments
-    ///
-    /// * `dout` - The byte to send.
-    ///
-    /// # Returns
-    ///
-    /// * `Some(u8)` containing the received byte if the MISO pin is configured.
-    /// * `None` if the MISO pin is not configured.
-    pub fn read_and_write_u8(&mut self, dout: u8) -> Option<u8> {
-        let mut result: u8 = 0;
-        self.cs_on();
-        for i in 0..8 {
-            self.clk_off();
-            if self.get_bit(dout, i) {
-                self.mosi_on();
-            } else {
-                self.mosi_off();
-            }
-            self.clk_on();
-            if let Some(rx_bit) = self.read_miso() {
-                self.set_bit(&mut result, i, rx_bit);
-            }
-        }
-        self.cs_off();
-        if self.pins.miso.is_some() {
-            Some(result)
+/// Performs a full-duplex SPI transfer of a single byte while blocking
+///
+/// # Arguments
+///
+/// * `spi_master' - The pins and configuration to use
+/// * `dout` - The byte to send.
+///
+/// # Returns
+///
+/// * `Some(u8)` containing the received byte if the MISO pin is configured.
+/// * `None` if the MISO pin is not configured.
+pub fn read_and_write_u8_blocking(spi_master: &mut SpiMasterCore, dout: u8) -> Option<u8> {
+    let mut result: u8 = 0;
+    spi_master.cs_on();
+    for i in 0..8 {
+        spi_master.clk_off();
+        if spi_master.get_bit(dout, i) {
+            spi_master.mosi_on();
         } else {
-            None
+            spi_master.mosi_off();
         }
+        spi_master.clk_on();
+        if let Some(rx_bit) = spi_master.read_miso() {
+            spi_master.set_bit(&mut result, i, rx_bit);
+        }
+    }
+    spi_master.cs_off();
+    if spi_master.pins.miso.is_some() {
+        Some(result)
+    } else {
+        None
     }
 }
