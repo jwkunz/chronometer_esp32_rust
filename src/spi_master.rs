@@ -1,5 +1,3 @@
-#![no_std]
-
 use esp_hal::gpio::{Input, Output};
 
 /// Enum representing the bit ordering for SPI communication.
@@ -210,7 +208,7 @@ enum SpiMasterTaskState {
     Off,
 }
 
-struct SpiMasterTask<'a> {
+pub struct SpiMasterTask<'a> {
     spi_engine: SpiMasterCore<'a>,
     current_state: SpiMasterTaskState,
     send_data: Option<u8>,
@@ -252,11 +250,11 @@ impl<'a> SpiMasterTask<'a> {
         }
     }
 
-    fn tick(&mut self) {
+    pub fn tick(&mut self) {
         self.current_state = match self.current_state {
             SpiMasterTaskState::Idle => {
                 self.bit_counter = 0;
-                if (self.send_data.is_some()) {
+                if self.send_data.is_some() {
                     SpiMasterTaskState::Start
                 } else {
                     SpiMasterTaskState::Idle

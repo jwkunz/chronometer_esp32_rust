@@ -1,4 +1,3 @@
-#![no_std]
 use esp_hal::gpio::Input;
 use esp_hal::time::{Duration, Instant};
 enum TrapState {
