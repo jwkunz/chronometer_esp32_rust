@@ -120,7 +120,7 @@ impl<'a> SpiMasterCore<'a> {
     /// * `Some(true)` if the MISO signal is active.
     /// * `Some(false)` if the MISO signal is inactive.
     /// * `None` if the MISO pin is not configured.
-    fn read_miso(&mut self) -> Option<bool> {
+    fn read_miso(&self) -> Option<bool> {
         if let Some(pin_in) = &self.pins.miso {
             match self.config.data_polarity {
                 Polarity::ActiveHigh => Some(pin_in.is_high()),
@@ -141,7 +141,7 @@ impl<'a> SpiMasterCore<'a> {
     /// # Returns
     ///
     /// `true` if the bit is set, `false` otherwise.
-    fn get_bit(&mut self, x: u8, position: u8) -> bool {
+    fn get_bit(&self, x: u8, position: u8) -> bool {
         let bit_index = match self.config.bit_ordering {
             BitOrdering::LeastSignificantBitFirst => position,
             BitOrdering::MostSignificantBitFirst => 7 - position,
@@ -156,7 +156,7 @@ impl<'a> SpiMasterCore<'a> {
     /// * `x` - The byte to modify.
     /// * `position` - The bit position to set or clear.
     /// * `value` - `true` to set the bit, `false` to clear it.
-    fn set_bit(&mut self, x: &mut u8, position: u8, value: bool) {
+    fn set_bit(&self, x: &mut u8, position: u8, value: bool) {
         let bit_index = match self.config.bit_ordering {
             BitOrdering::LeastSignificantBitFirst => position,
             BitOrdering::MostSignificantBitFirst => 7 - position,
@@ -200,5 +200,105 @@ pub fn read_and_write_u8_blocking(spi_master: &mut SpiMasterCore, dout: u8) -> O
         Some(result)
     } else {
         None
+    }
+}
+
+enum SpiMasterTaskState {
+    Idle,
+    Start,
+    Write,
+    Off,
+}
+
+struct SpiMasterTask<'a> {
+    spi_engine: SpiMasterCore<'a>,
+    current_state: SpiMasterTaskState,
+    send_data: Option<u8>,
+    receive_data: Option<u8>,
+    bit_counter: u8,
+}
+
+impl<'a> SpiMasterTask<'a> {
+    pub fn new(spi_engine: SpiMasterCore) -> SpiMasterTask {
+        SpiMasterTask {
+            spi_engine,
+            current_state: SpiMasterTaskState::Idle,
+            send_data: None,
+            receive_data: None,
+            bit_counter: 0,
+        }
+    }
+
+    pub fn load_to_send(&mut self, data: u8) {
+        self.current_state = SpiMasterTaskState::Start;
+        self.send_data = Some(data);
+    }
+
+    pub fn receive_data_available(&mut self) -> bool {
+        self.receive_data.is_some()
+    }
+
+    pub fn get_received(&mut self) -> Option<u8> {
+        match self.current_state {
+            SpiMasterTaskState::Idle => {
+                if let Some(x) = self.receive_data {
+                    self.receive_data = None;
+                    Some(x)
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn tick(&mut self) {
+        self.current_state = match self.current_state {
+            SpiMasterTaskState::Idle => {
+                self.bit_counter = 0;
+                if (self.send_data.is_some()) {
+                    SpiMasterTaskState::Start
+                } else {
+                    SpiMasterTaskState::Idle
+                }
+            }
+            SpiMasterTaskState::Start => {
+                self.spi_engine.cs_on();
+                self.receive_data = if self.spi_engine.pins.miso.is_some() {
+                    Some(0)
+                } else {
+                    None
+                };
+                SpiMasterTaskState::Off
+            }
+            SpiMasterTaskState::Off => {
+                self.spi_engine.clk_off();
+                if self
+                    .spi_engine
+                    .get_bit(self.send_data.unwrap(), self.bit_counter)
+                {
+                    self.spi_engine.mosi_on();
+                } else {
+                    self.spi_engine.mosi_off();
+                }
+                SpiMasterTaskState::Write
+            }
+            SpiMasterTaskState::Write => {
+                self.spi_engine.clk_on();
+                if let Some(rx_bit) = self.spi_engine.read_miso() {
+                    self.spi_engine.set_bit(
+                        &mut self.receive_data.unwrap(),
+                        self.bit_counter,
+                        rx_bit,
+                    );
+                }
+                self.bit_counter += 1;
+                if self.bit_counter == 8 {
+                    SpiMasterTaskState::Idle
+                } else {
+                    SpiMasterTaskState::Off
+                }
+            }
+        }
     }
 }

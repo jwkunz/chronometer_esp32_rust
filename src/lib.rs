@@ -1,3 +1,3 @@
 #![no_std]
 pub mod speed_trap;
-pub mod spi_master_blocking;
+pub mod spi_master;
