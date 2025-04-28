@@ -34,6 +34,19 @@ pub struct SpiConfig {
 }
 
 impl SpiConfig {
+    /// Creates a new `SpiConfig` instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `bit_ordering` - The bit ordering for SPI communication.
+    /// * `clock_polarity` - The clock polarity for SPI communication.
+    /// * `cs_polarity` - The chip select polarity for SPI communication.
+    /// * `data_polarity` - The data polarity for SPI communication.
+    /// * `baud_rate_hz` - The baud rate in Hz.
+    ///
+    /// # Returns
+    ///
+    /// A new `SpiConfig` instance.
     pub fn new(
         bit_ordering: BitOrdering,
         clock_polarity: Polarity,
@@ -49,11 +62,20 @@ impl SpiConfig {
             half_bit_period_micros: SpiConfig::calculate_half_period(baud_rate_hz),
         }
     }
-
+    /// Calculates half the bit period in microseconds.
+    ///
+    /// # Arguments
+    ///
+    /// * `rate_hz` - The baud rate in Hz.
+    ///
+    /// # Returns
+    ///
+    /// The half bit period in microseconds.
     fn calculate_half_period(rate_hz: f64) -> u64 {
         (1e6 / (2.0 * rate_hz)) as u64
     }
 
+    /// Delays execution for half the bit period.
     pub fn delay_half_period(&self) {
         let delay_start = Instant::now();
         while delay_start.elapsed() < Duration::from_micros(self.half_bit_period_micros) {}
@@ -241,7 +263,7 @@ pub fn read_and_write_u8_blocking(spi_master: &mut SpiMasterCore, dout: u8) -> O
         None
     }
 }
-
+/*
 enum SpiMasterTaskState {
     Idle,
     Start,
@@ -341,3 +363,4 @@ impl<'a> SpiMasterTask<'a> {
         }
     }
 }
+*/
