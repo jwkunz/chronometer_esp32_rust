@@ -82,6 +82,23 @@ impl SpiConfig {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum SpiWordSize {
+    EightBits,
+    SixteenBits,
+    ThirtyTwoBits,
+    SixtyFourBits,
+}
+/// Gets the size from the WordSize
+pub fn get_size(x: SpiWordSize) -> usize {
+    match x {
+        SpiWordSize::EightBits => 8,
+        SpiWordSize::SixteenBits => 16,
+        SpiWordSize::ThirtyTwoBits => 32,
+        SpiWordSize::SixtyFourBits => 64,
+    }
+}
+
 /// Struct representing the SPI pins for the master device.
 pub struct SpiPinsMaster<'a> {
     /// Master Out Slave In (MOSI) pin.
@@ -187,16 +204,20 @@ impl<'a> SpiMasterCore<'a> {
     ///
     /// # Arguments
     ///
-    /// * `x` - The byte to extract the bit from.
+    /// * `x` - The word to extract the bit from.
     /// * `position` - The bit position to retrieve.
+    /// * `n_bits` - The number of bits in the word
     ///
     /// # Returns
     ///
     /// `true` if the bit is set, `false` otherwise.
-    fn get_bit(&self, x: u8, position: u8) -> bool {
+    fn get_bit(&self, x: u64, position: usize, n_bits: SpiWordSize) -> bool {
         let bit_index = match self.config.bit_ordering {
             BitOrdering::LeastSignificantBitFirst => position,
-            BitOrdering::MostSignificantBitFirst => 7 - position,
+            BitOrdering::MostSignificantBitFirst => {
+                let limit: usize = get_size(n_bits) - 1;
+                limit - position
+            }
         };
         ((x >> bit_index) & 0b1) > 0
     }
@@ -205,16 +226,20 @@ impl<'a> SpiMasterCore<'a> {
     ///
     /// # Arguments
     ///
-    /// * `x` - The byte to modify.
+    /// * `x` - The word to modify.
     /// * `position` - The bit position to set or clear.
+    /// * `n_bits` - The number of bits in the word
     /// * `value` - `true` to set the bit, `false` to clear it.
-    fn set_bit(&self, x: &mut u8, position: u8, value: bool) {
+    fn set_bit(&self, x: &mut u64, position: usize, n_bits: SpiWordSize, value: bool) {
         let bit_index = match self.config.bit_ordering {
             BitOrdering::LeastSignificantBitFirst => position,
-            BitOrdering::MostSignificantBitFirst => 7 - position,
+            BitOrdering::MostSignificantBitFirst => {
+                let limit: usize = get_size(n_bits) - 1;
+                limit - position
+            }
         };
         if value {
-            *x |= (1 << bit_index);
+            *x |= 1 << bit_index;
         } else {
             *x &= !(1 << bit_index);
         }
@@ -226,20 +251,26 @@ impl<'a> SpiMasterCore<'a> {
 /// # Arguments
 ///
 /// * `spi_master' - The pins and configuration to use
-/// * `dout` - The byte to send.
+/// * `dout` - The word containing at least n_bits to send (starting at lsb)
+/// * `n_bits` - Number of bits to send
 ///
 /// # Returns
 ///
 /// * `Some(u8)` containing the received byte if the MISO pin is configured.
 /// * `None` if the MISO pin is not configured.
-pub fn read_and_write_u8_blocking(spi_master: &mut SpiMasterCore, dout: u8) -> Option<u8> {
-    let mut result: u8 = 0;
+pub fn read_and_write_blocking(
+    spi_master: &mut SpiMasterCore,
+    dout: u64,
+    n_bits: SpiWordSize,
+) -> Option<u64> {
+    let mut result: u64 = 0;
     spi_master.cs_on();
-    let mut delay_start = Instant::now();
-    for i in 0..8 {
+    let mut delay_start;
+    let limit = get_size(n_bits);
+    for i in 0..limit {
         spi_master.clk_off();
         delay_start = Instant::now();
-        if spi_master.get_bit(dout, i) {
+        if spi_master.get_bit(dout, i, n_bits) {
             spi_master.mosi_on();
         } else {
             spi_master.mosi_off();
@@ -250,7 +281,7 @@ pub fn read_and_write_u8_blocking(spi_master: &mut SpiMasterCore, dout: u8) -> O
         spi_master.clk_on();
         delay_start = Instant::now();
         if let Some(rx_bit) = spi_master.read_miso() {
-            spi_master.set_bit(&mut result, i, rx_bit);
+            spi_master.set_bit(&mut result, i, n_bits, rx_bit);
         }
         while delay_start.elapsed()
             < Duration::from_micros(spi_master.config.half_bit_period_micros)
