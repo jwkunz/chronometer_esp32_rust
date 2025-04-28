@@ -1,4 +1,7 @@
-use esp_hal::gpio::{Input, Output};
+use esp_hal::{
+    gpio::{Input, Output},
+    time::{Duration, Instant},
+};
 
 /// Enum representing the bit ordering for SPI communication.
 pub enum BitOrdering {
@@ -26,6 +29,35 @@ pub struct SpiConfig {
     pub cs_polarity: Polarity,
     /// Data polarity for SPI communication.
     pub data_polarity: Polarity,
+    /// Half the bit period in microseconds = 1E6 / (2 * baud_Hz)
+    pub half_bit_period_micros: u64,
+}
+
+impl SpiConfig {
+    pub fn new(
+        bit_ordering: BitOrdering,
+        clock_polarity: Polarity,
+        cs_polarity: Polarity,
+        data_polarity: Polarity,
+        baud_rate_hz: f64,
+    ) -> SpiConfig {
+        SpiConfig {
+            bit_ordering,
+            clock_polarity,
+            cs_polarity,
+            data_polarity,
+            half_bit_period_micros: SpiConfig::calculate_half_period(baud_rate_hz),
+        }
+    }
+
+    fn calculate_half_period(rate_hz: f64) -> u64 {
+        (1e6 / (2.0 * rate_hz)) as u64
+    }
+
+    pub fn delay_half_period(&self) {
+        let delay_start = Instant::now();
+        while delay_start.elapsed() < Duration::from_micros(self.half_bit_period_micros) {}
+    }
 }
 
 /// Struct representing the SPI pins for the master device.
@@ -181,17 +213,26 @@ impl<'a> SpiMasterCore<'a> {
 pub fn read_and_write_u8_blocking(spi_master: &mut SpiMasterCore, dout: u8) -> Option<u8> {
     let mut result: u8 = 0;
     spi_master.cs_on();
+    let mut delay_start = Instant::now();
     for i in 0..8 {
         spi_master.clk_off();
+        delay_start = Instant::now();
         if spi_master.get_bit(dout, i) {
             spi_master.mosi_on();
         } else {
             spi_master.mosi_off();
         }
+        while delay_start.elapsed()
+            < Duration::from_micros(spi_master.config.half_bit_period_micros)
+        {}
         spi_master.clk_on();
+        delay_start = Instant::now();
         if let Some(rx_bit) = spi_master.read_miso() {
             spi_master.set_bit(&mut result, i, rx_bit);
         }
+        while delay_start.elapsed()
+            < Duration::from_micros(spi_master.config.half_bit_period_micros)
+        {}
     }
     spi_master.cs_off();
     if spi_master.pins.miso.is_some() {
