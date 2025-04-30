@@ -13,17 +13,17 @@ pub fn tb_st7796s(peripherals: Peripherals) -> ! {
     let dc = Output::new(
         peripherals.GPIO2,
         esp_hal::gpio::Level::High,
-        OutputConfig::default(),
+        OutputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
     );
     let _rst = Output::new(
         peripherals.GPIO4,
         esp_hal::gpio::Level::Low,
-        OutputConfig::default(),
+        OutputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
     );
     let _blk = Output::new(
         peripherals.GPIO32,
         esp_hal::gpio::Level::High,
-        OutputConfig::default(),
+        OutputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
     );
     let _diode_a = Input::new(peripherals.GPIO12, InputConfig::default());
     let _diode_b = Input::new(peripherals.GPIO13, InputConfig::default());
@@ -35,18 +35,18 @@ pub fn tb_st7796s(peripherals: Peripherals) -> ! {
         mosi: Output::new(
             peripherals.GPIO23,
             esp_hal::gpio::Level::Low,
-            OutputConfig::default(),
+            OutputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
         ),
         miso: None,
         sclk: Output::new(
             peripherals.GPIO18,
             esp_hal::gpio::Level::Low,
-            OutputConfig::default(),
+            OutputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
         ),
         cs: Output::new(
             peripherals.GPIO15,
             esp_hal::gpio::Level::High,
-            OutputConfig::default(),
+            OutputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
         ),
     };
     esp_println::println!("Defining spi config...");
