@@ -1,6 +1,12 @@
-use esp_hal::time::{Duration, Instant};
+use esp_hal::{
+    gpio::Output,
+    time::{Duration, Instant},
+};
 
 use crate::spi_master::{read_and_write_blocking, SpiMasterCore, SpiWordSize};
+
+const LCD_HEIGHT: u16 = 240;
+const LCD_WIDTH: u16 = 135;
 
 const ST77XX_NOP: u8 = 0x00;
 const ST77XX_SWRESET: u8 = 0x01;
@@ -52,122 +58,134 @@ pub const ST77XX_YELLOW: Color565 = 0xFFE0;
 pub const ST77XX_ORANGE: Color565 = 0xFC00;
 
 fn blocking_delay_ms(x: u64) {
-    let mut delay_start = Instant::now();
+    let delay_start = Instant::now();
     while delay_start.elapsed() < Duration::from_millis(x) {}
 }
 
-pub struct st7796s_manager<'a> {
+pub struct St7796sManager<'a> {
     spi_master: SpiMasterCore<'a>,
+    dc: Output<'a>,
+    ref_x: u16,
+    ref_y: u16,
+    ref_width: u16,
+    ref_height: u16,
 }
 
-impl<'a> st7796s_manager<'a> {
-    pub fn new(spi_master: SpiMasterCore<'a>) -> st7796s_manager<'a> {
-        st7796s_manager { spi_master }
+impl<'a> St7796sManager<'a> {
+    pub fn new(spi_master: SpiMasterCore<'a>, dc: Output<'a>) -> St7796sManager<'a> {
+        St7796sManager {
+            spi_master,
+            dc,
+            ref_x: 0,
+            ref_y: 0,
+            ref_width: 0,
+            ref_height: 0,
+        }
     }
 
-    fn initialize(&mut self) {
-        //  1: Software reset, no args
+    fn write_u8(&mut self, byte: u8) {
+        read_and_write_blocking(&mut self.spi_master, byte as u64, SpiWordSize::EightBits);
+    }
+
+    fn write_u16(&mut self, word: u16) {
+        read_and_write_blocking(&mut self.spi_master, word as u64, SpiWordSize::SixteenBits);
+    }
+
+    fn write_u32(&mut self, word: u32) {
         read_and_write_blocking(
             &mut self.spi_master,
-            ST77XX_SWRESET as u64,
-            SpiWordSize::EightBits,
+            word as u64,
+            SpiWordSize::ThirtyTwoBits,
         );
+    }
+
+    pub fn initialize(&mut self) {
+        self.dc.set_high();
+        self.write_u8(ST77XX_SWRESET);
         blocking_delay_ms(150);
-        //  2: Out of sleep mode, no args
-        read_and_write_blocking(
-            &mut self.spi_master,
-            ST77XX_SLPOUT as u64,
-            SpiWordSize::EightBits,
-        );
+        self.write_u8(ST77XX_SLPOUT);
         blocking_delay_ms(10);
-        //  3: Set color mode to 16 bit color
-        read_and_write_blocking(
-            &mut self.spi_master,
-            ST77XX_COLMOD as u64,
-            SpiWordSize::EightBits,
-        );
-        read_and_write_blocking(
-            &mut self.spi_master,
-            0x55 as u64, // 16 bit
-            SpiWordSize::EightBits,
-        );
+        self.write_u8(ST77XX_COLMOD);
+        self.write_u8(0x55);
         blocking_delay_ms(10);
-        //  4: Mem access ctrl (directions)
-        read_and_write_blocking(
-            &mut self.spi_master,
-            ST77XX_MADCTL as u64,
-            SpiWordSize::EightBits,
-        );
-        read_and_write_blocking(
-            &mut self.spi_master,
-            0x08 as u64, // Row/col addr, bottom-top refresh
-            SpiWordSize::EightBits,
-        );
-        //  5: Column addr set
-        read_and_write_blocking(
-            &mut self.spi_master,
-            ST77XX_CASET as u64,
-            SpiWordSize::EightBits,
-        );
-        read_and_write_blocking(&mut self.spi_master, 0x00 as u64, SpiWordSize::EightBits);
-        read_and_write_blocking(
-            &mut self.spi_master,
-            0 as u64, // XSTART = 0
-            SpiWordSize::EightBits,
-        );
-        read_and_write_blocking(&mut self.spi_master, 0 as u64, SpiWordSize::EightBits);
-        read_and_write_blocking(
-            &mut self.spi_master,
-            240 as u64, // XEND = 240
-            SpiWordSize::EightBits,
-        );
-        // 6: Row addr set
-        read_and_write_blocking(
-            &mut self.spi_master,
-            ST77XX_RASET as u64,
-            SpiWordSize::EightBits,
-        );
-        read_and_write_blocking(&mut self.spi_master, 0x00 as u64, SpiWordSize::EightBits);
-        read_and_write_blocking(
-            &mut self.spi_master,
-            0 as u64, // YSTART = 0
-            SpiWordSize::EightBits,
-        );
-        read_and_write_blocking(
-            &mut self.spi_master,
-            320 >> 8 as u64,
-            SpiWordSize::EightBits,
-        );
-        read_and_write_blocking(
-            &mut self.spi_master,
-            320 & 0xff as u64, // YEND = 320
-            SpiWordSize::EightBits,
-        );
-        //  7: hack
-        read_and_write_blocking(
-            &mut self.spi_master,
-            ST77XX_INVON as u64, //
-            SpiWordSize::EightBits,
-        );
+        self.write_u8(ST77XX_MADCTL);
+        self.write_u8(0x08);
+        self.write_u8(ST77XX_CASET);
+        self.write_u8(0x00);
+        self.write_u8(0);
+        self.write_u8(0x00);
+        self.write_u8(135);
+        self.write_u8(ST77XX_RASET);
+        self.write_u8(0x00);
+        self.write_u8(0);
+        self.write_u8(0x00);
+        self.write_u8(240);
+        self.write_u8(ST77XX_INVON);
         blocking_delay_ms(10);
-        //  8: Normal display on
-        read_and_write_blocking(
-            &mut self.spi_master,
-            ST77XX_NORON as u64, //
-            SpiWordSize::EightBits,
-        );
+        self.write_u8(ST77XX_NORON);
         blocking_delay_ms(10);
-        //  9: Main screen turn on
-        read_and_write_blocking(
-            &mut self.spi_master,
-            ST77XX_DISPON as u64, //
-            SpiWordSize::EightBits,
-        );
+        self.write_u8(ST77XX_DISPON);
         blocking_delay_ms(10);
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    pub fn set_rotation(&mut self, m: u8) {
+        let mut madctl: u8;
+        match m {
+            0 => {
+                madctl = ST77XX_MADCTL_MX | ST77XX_MADCTL_MY | ST77XX_MADCTL_RGB;
+                self.ref_x = 0;
+                self.ref_y = 0;
+                self.ref_width = LCD_WIDTH;
+                self.ref_height = LCD_HEIGHT;
+            }
+            1 => {
+                madctl = ST77XX_MADCTL_MY | ST77XX_MADCTL_MV | ST77XX_MADCTL_RGB;
+                self.ref_x = 0;
+                self.ref_y = LCD_HEIGHT;
+                self.ref_width = LCD_HEIGHT;
+                self.ref_height = LCD_WIDTH;
+            }
+            2 => {
+                madctl = ST77XX_MADCTL_RGB;
+                self.ref_x = LCD_HEIGHT;
+                self.ref_y = LCD_WIDTH;
+                self.ref_width = LCD_WIDTH;
+                self.ref_height = LCD_HEIGHT;
+            }
+            _ => {
+                madctl = ST77XX_MADCTL_MX | ST77XX_MADCTL_MV | ST77XX_MADCTL_RGB;
+                self.ref_x = LCD_WIDTH;
+                self.ref_y = LCD_HEIGHT;
+                self.ref_width = LCD_HEIGHT;
+                self.ref_height = LCD_WIDTH;
+            }
+        }
+        self.write_u8(ST77XX_MADCTL);
+        self.write_u8(madctl);
+    }
+
+    pub fn draw_rectangle(&mut self, x: u16, y: u16, w: u16, h: u16, color: u16) {
+        self.set_address_window(x, y, w, h);
+        self.write_u16(color);
+    }
+
+    pub fn enable_display(&mut self, enable: bool) {
+        if enable {
+            self.write_u8(ST77XX_DISPON);
+        } else {
+            self.write_u8(ST77XX_DISPOFF);
+        }
+    }
+
+    fn set_address_window(&mut self, x: u16, y: u16, w: u16, h: u16) {
+        let x_draw: u32 = x as u32 + self.ref_x as u32;
+        let y_draw: u32 = y as u32 + self.ref_y as u32;
+        let x_address = (x_draw << 16) | (x_draw + w as u32 - 1);
+        let y_address = (y_draw << 16) | (y_draw + h as u32 - 1);
+        self.write_u8(ST77XX_CASET);
+        self.write_u32(x_address);
+        self.write_u8(ST77XX_RASET);
+        self.write_u32(y_address);
+        self.write_u8(ST77XX_RAMWR);
+    }
 }

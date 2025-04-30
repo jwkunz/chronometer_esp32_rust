@@ -75,28 +75,28 @@ impl<'a> SpeedTrap<'a> {
     pub fn tick(&mut self) {
         match self.state {
             TrapState::Idle => {
-                if (self.input_start.is_low()) {
+                if self.input_start.is_low() {
                     self.start_clock();
                     self.state = TrapState::LowStart
                 }
             }
             TrapState::LowStart => {
-                if (self.input_stop.is_low()) {
+                if self.input_stop.is_low() {
                     self.state = TrapState::LowStop
                 }
             }
             TrapState::LowStop => {
-                if (self.input_start.is_high()) {
+                if self.input_start.is_high() {
                     self.state = TrapState::HighStart
                 }
             }
             TrapState::HighStart => {
-                if (self.input_stop.is_high()) {
+                if self.input_stop.is_high() {
                     self.state = TrapState::HighStop
                 }
             }
             TrapState::HighStop => {
-                if (self.input_start.is_low()) {
+                if self.input_start.is_low() {
                     self.stop_clock();
                     self.state = TrapState::Report
                 }

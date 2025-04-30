@@ -52,7 +52,7 @@ impl SpiConfig {
         clock_polarity: Polarity,
         cs_polarity: Polarity,
         data_polarity: Polarity,
-        baud_rate_hz: f64,
+        baud_rate_hz: u64,
     ) -> SpiConfig {
         SpiConfig {
             bit_ordering,
@@ -71,8 +71,8 @@ impl SpiConfig {
     /// # Returns
     ///
     /// The half bit period in microseconds.
-    fn calculate_half_period(rate_hz: f64) -> u64 {
-        (1e6 / (2.0 * rate_hz)) as u64
+    fn calculate_half_period(rate_hz: u64) -> u64 {
+        (1e6 / (2.0 * rate_hz as f64)) as u64
     }
 
     /// Delays execution for half the bit period.
@@ -102,13 +102,13 @@ pub fn get_size(x: SpiWordSize) -> usize {
 /// Struct representing the SPI pins for the master device.
 pub struct SpiPinsMaster<'a> {
     /// Master Out Slave In (MOSI) pin.
-    mosi: Output<'a>,
+    pub mosi: Output<'a>,
     /// Master In Slave Out (MISO) pin (optional).
-    miso: Option<Input<'a>>,
+    pub miso: Option<Input<'a>>,
     /// Serial Clock (SCLK) pin.
-    sclk: Output<'a>,
+    pub sclk: Output<'a>,
     /// Chip Select (CS) pin.
-    cs: Output<'a>,
+    pub cs: Output<'a>,
 }
 
 /// SPI master implementation with blocking operations.
