@@ -10,14 +10,10 @@ use crate::{
 
 pub fn tb_st7796s(peripherals: Peripherals) -> ! {
     esp_println::println!("Defining pins...");
-    let dc = Output::new(
-        peripherals.GPIO2,
-        esp_hal::gpio::Level::High,
-        OutputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
-    );
     let _rst = Output::new(
+        // Active low
         peripherals.GPIO4,
-        esp_hal::gpio::Level::Low,
+        esp_hal::gpio::Level::High,
         OutputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
     );
     let _blk = Output::new(
@@ -48,6 +44,11 @@ pub fn tb_st7796s(peripherals: Peripherals) -> ! {
             esp_hal::gpio::Level::High,
             OutputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
         ),
+        dc: Output::new(
+            peripherals.GPIO2,
+            esp_hal::gpio::Level::High,
+            OutputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
+        ),
     };
     esp_println::println!("Defining spi config...");
     let spi_config = SpiConfig::new(
@@ -55,17 +56,19 @@ pub fn tb_st7796s(peripherals: Peripherals) -> ! {
         spi_master::Polarity::ActiveHigh,
         spi_master::Polarity::ActiveLow,
         spi_master::Polarity::ActiveHigh,
+        spi_master::Polarity::ActiveHigh,
         32000000,
     );
     esp_println::println!("Defining screen manager...");
-    let mut screen = St7796sManager::new(SpiMasterCore::new(pins, spi_config), dc);
+    let mut screen = St7796sManager::new(SpiMasterCore::new(pins, spi_config));
     esp_println::println!("Initialize...");
     screen.initialize();
     esp_println::println!("Rotation...");
-    screen.set_rotation(0);
+    screen.set_rotation(2);
     esp_println::println!("Display Green...");
     screen.draw_rectangle(0, 0, 100, 100, ST77XX_GREEN);
     esp_println::println!("Done");
+    screen.enable_display(true);
 
     loop {}
 }

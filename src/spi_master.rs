@@ -29,6 +29,8 @@ pub struct SpiConfig {
     pub cs_polarity: Polarity,
     /// Data polarity for SPI communication.
     pub data_polarity: Polarity,
+    /// Data (active) or command (innactive) polarity  for interpreting SPI communication.
+    pub data_or_command_polarity: Polarity,
     /// Half the bit period in microseconds = 1E6 / (2 * baud_Hz)
     pub half_bit_period_micros: u64,
 }
@@ -52,6 +54,7 @@ impl SpiConfig {
         clock_polarity: Polarity,
         cs_polarity: Polarity,
         data_polarity: Polarity,
+        data_or_command_polarity: Polarity,
         baud_rate_hz: u64,
     ) -> SpiConfig {
         SpiConfig {
@@ -59,6 +62,7 @@ impl SpiConfig {
             clock_polarity,
             cs_polarity,
             data_polarity,
+            data_or_command_polarity,
             half_bit_period_micros: SpiConfig::calculate_half_period(baud_rate_hz),
         }
     }
@@ -109,14 +113,16 @@ pub struct SpiPinsMaster<'a> {
     pub sclk: Output<'a>,
     /// Chip Select (CS) pin.
     pub cs: Output<'a>,
+    /// Data or command
+    pub dc: Output<'a>,
 }
 
 /// SPI master implementation with blocking operations.
 pub struct SpiMasterCore<'a> {
     /// SPI pins used by the master.
-    pins: SpiPinsMaster<'a>,
+    pub pins: SpiPinsMaster<'a>,
     /// Configuration for the SPI master.
-    config: SpiConfig,
+    pub config: SpiConfig,
 }
 
 impl<'a> SpiMasterCore<'a> {
@@ -132,6 +138,22 @@ impl<'a> SpiMasterCore<'a> {
     /// A new `SpiMasterBlocking` instance.
     pub fn new(pins: SpiPinsMaster<'a>, config: SpiConfig) -> Self {
         Self { pins, config }
+    }
+
+    /// Interpret the next write as data
+    pub fn set_data_mode(&mut self) {
+        match self.config.data_or_command_polarity {
+            Polarity::ActiveHigh => self.pins.dc.set_high(),
+            Polarity::ActiveLow => self.pins.dc.set_low(),
+        }
+    }
+
+    /// Interpret the next write as a command
+    pub fn set_command_mode(&mut self) {
+        match self.config.data_or_command_polarity {
+            Polarity::ActiveHigh => self.pins.dc.set_low(),
+            Polarity::ActiveLow => self.pins.dc.set_high(),
+        }
     }
 
     /// Turns the clock signal on based on the configured clock polarity.
