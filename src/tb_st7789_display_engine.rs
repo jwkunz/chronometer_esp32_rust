@@ -5,8 +5,8 @@ use esp_hal::{
 };
 
 use crate::{
-    spi_master::{SpiConfig, SpiMasterCore, SpiPinsMaster},
-    st7796s_manager::{St7796sManager, ST77XX_GREEN},
+    spi_master::{FastSpiMode0, SoftwareSpiMasterConfigurable, SpiConfig, SpiPinsMaster},
+    st7789_display_engine::{St7789DisplayEngine, ST77XX_GREEN},
 };
 
 /// Implements a maximum length sequence Linear Feedback Shift Register (LFSR) in Galois form for a `u16`.
@@ -31,7 +31,7 @@ fn lfsr_16(x: &mut u16) {
     }
 }
 
-pub fn tb_st7796s(peripherals: Peripherals) -> ! {
+pub fn tb_st7789_display_engine(peripherals: Peripherals) -> ! {
     esp_println::println!("Defining pins...");
     let _blk = Output::new(
         peripherals.GPIO32,
@@ -73,12 +73,8 @@ pub fn tb_st7796s(peripherals: Peripherals) -> ! {
             OutputConfig::default().with_pull(esp_hal::gpio::Pull::Down),
         )),
     };
-    esp_println::println!("Defining spi config...");
-    // Verified correct config by testing screen enable/disable display
-    let spi_config = SpiConfig::new(None, None, None, None, None, None, Some(1_000_000));
     esp_println::println!("Defining screen manager...");
-    let mut screen =
-        St7796sManager::new(SpiMasterCore::new(pins, spi_config), lcd_width, lcd_height);
+    let mut screen = St7789DisplayEngine::new(pins, lcd_width, lcd_height);
     esp_println::println!("Initialize...");
     screen.display_initialization_sequence();
     esp_println::println!("Rotation...");

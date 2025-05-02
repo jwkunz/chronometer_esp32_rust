@@ -3,7 +3,7 @@ use esp_hal::{
     time::{Duration, Instant},
 };
 
-use crate::spi_master::{read_and_write_blocking, SpiMasterCore, SpiWordSize};
+use crate::spi_master::{FastSpiMode0, SpiPinsMaster};
 
 const LCD_HEIGHT: u16 = 240;
 const LCD_WIDTH: u16 = 135;
@@ -62,8 +62,8 @@ fn blocking_delay_ms(x: u64) {
     while delay_start.elapsed() < Duration::from_millis(x) {}
 }
 
-pub struct St7796sManager<'a> {
-    spi_master: SpiMasterCore<'a>,
+pub struct St7789DisplayEngine<'a> {
+    spi_master: FastSpiMode0<'a>,
     row_start_0: u16,
     column_start_0: u16,
     row_start_1: u16,
@@ -76,12 +76,12 @@ pub struct St7796sManager<'a> {
     set_height: u16,
 }
 
-impl<'a> St7796sManager<'a> {
+impl<'a> St7789DisplayEngine<'a> {
     pub fn new(
-        spi_master: SpiMasterCore<'a>,
+        pins: SpiPinsMaster<'a>,
         window_width: u16,
         window_height: u16,
-    ) -> St7796sManager<'a> {
+    ) -> St7789DisplayEngine<'a> {
         let row_start_0;
         let row_start_1;
         let column_start_0;
@@ -105,8 +105,8 @@ impl<'a> St7796sManager<'a> {
             column_start_0 = (240 - window_width) / 2;
             column_start_1 = column_start_0;
         }
-        St7796sManager {
-            spi_master,
+        St7789DisplayEngine {
+            spi_master: FastSpiMode0 { pins },
             row_start_0,
             column_start_0,
             row_start_1,
@@ -120,108 +120,23 @@ impl<'a> St7796sManager<'a> {
         }
     }
 
-    fn write_u8(&mut self, mut word: u8, is_data: bool) {
-        /*
-        read_and_write_blocking(
-            &mut self.spi_master,
-            word as u32,
-            SpiWordSize::EightBits,
-            Some(is_data),
-        );
-        */
-
-        self.spi_master.pins.cs.set_low();
-        if is_data {
-            self.spi_master.set_data_mode();
-        } else {
-            self.spi_master.set_command_mode();
-        }
-        for _ in 0..8 {
-            self.spi_master.pins.sclk.set_low();
-            if (word & 0x80) > 0 {
-                self.spi_master.pins.mosi.set_high()
-            } else {
-                self.spi_master.pins.mosi.set_low()
-            }
-            self.spi_master.pins.sclk.set_high();
-            word <<= 1;
-        }
-        self.spi_master.pins.cs.set_high();
-    }
-
-    fn write_u16(&mut self, mut word: u16, is_data: bool) {
-        /*
-        read_and_write_blocking(
-            &mut self.spi_master,
-            word as u32,
-            SpiWordSize::SixteenBits,
-            Some(is_data),
-        );
-        */
-        self.spi_master.pins.cs.set_low();
-        if is_data {
-            self.spi_master.set_data_mode();
-        } else {
-            self.spi_master.set_command_mode();
-        }
-        for _ in 0..16 {
-            self.spi_master.pins.sclk.set_low();
-            if (word & 0x8000) > 0 {
-                self.spi_master.pins.mosi.set_high()
-            } else {
-                self.spi_master.pins.mosi.set_low()
-            }
-            self.spi_master.pins.sclk.set_high();
-            word <<= 1;
-        }
-        self.spi_master.pins.cs.set_high();
-    }
-
-    fn write_u32(&mut self, mut word: u32, is_data: bool) {
-        /*
-        read_and_write_blocking(
-            &mut self.spi_master,
-            word as u32,
-            SpiWordSize::ThirtyTwoBits,
-            Some(is_data),
-        );
-        */
-        self.spi_master.pins.cs.set_low();
-        if is_data {
-            self.spi_master.set_data_mode();
-        } else {
-            self.spi_master.set_command_mode();
-        }
-        for _ in 0..32 {
-            self.spi_master.pins.sclk.set_low();
-            if (word & 0x8000_0000) > 0 {
-                self.spi_master.pins.mosi.set_high()
-            } else {
-                self.spi_master.pins.mosi.set_low()
-            }
-            self.spi_master.pins.sclk.set_high();
-            word <<= 1;
-        }
-        self.spi_master.pins.cs.set_high();
-    }
-
     pub fn display_initialization_sequence(&mut self) {
-        self.write_u8(ST77XX_SWRESET, false);
+        self.spi_master.write_u8(ST77XX_SWRESET, Some(false));
         blocking_delay_ms(150);
-        self.write_u8(ST77XX_SLPOUT, false);
+        self.spi_master.write_u8(ST77XX_SLPOUT, Some(false));
         blocking_delay_ms(10);
-        self.write_u8(ST77XX_COLMOD, false);
-        self.write_u8(0x55, true);
+        self.spi_master.write_u8(ST77XX_COLMOD, Some(false));
+        self.spi_master.write_u8(0x55, Some(true));
         blocking_delay_ms(10);
-        self.write_u8(ST77XX_MADCTL, false);
-        self.write_u8(0x08, true);
-        self.write_u8(ST77XX_CASET, false);
-        self.write_u32(240, true);
-        self.write_u8(ST77XX_RASET, false);
-        self.write_u32(320, true);
-        self.write_u8(ST77XX_INVON, false);
-        self.write_u8(ST77XX_NORON, false);
-        self.write_u8(ST77XX_DISPON, false);
+        self.spi_master.write_u8(ST77XX_MADCTL, Some(false));
+        self.spi_master.write_u8(0x08, Some(true));
+        self.spi_master.write_u8(ST77XX_CASET, Some(false));
+        self.spi_master.write_u32(240, Some(true));
+        self.spi_master.write_u8(ST77XX_RASET, Some(false));
+        self.spi_master.write_u32(320, Some(true));
+        self.spi_master.write_u8(ST77XX_INVON, Some(false));
+        self.spi_master.write_u8(ST77XX_NORON, Some(false));
+        self.spi_master.write_u8(ST77XX_DISPON, Some(false));
         blocking_delay_ms(10);
     }
 
@@ -257,14 +172,14 @@ impl<'a> St7796sManager<'a> {
                 self.set_height = self.window_width;
             }
         }
-        self.write_u8(ST77XX_MADCTL, false);
-        self.write_u8(madctl, true);
+        self.spi_master.write_u8(ST77XX_MADCTL, Some(false));
+        self.spi_master.write_u8(madctl, Some(true));
     }
 
     pub fn fill_rectangle(&mut self, x: u16, y: u16, w: u16, h: u16, color: u16) {
         self.set_address_window(x, y, w, h);
         for _ in 0..(w * h) {
-            self.write_u16(color, true);
+            self.spi_master.write_u16(color, Some(true));
         }
     }
 
@@ -274,9 +189,9 @@ impl<'a> St7796sManager<'a> {
 
     pub fn enable_display(&mut self, enable: bool) {
         if enable {
-            self.write_u8(ST77XX_DISPON, false);
+            self.spi_master.write_u8(ST77XX_DISPON, Some(false));
         } else {
-            self.write_u8(ST77XX_DISPOFF, false);
+            self.spi_master.write_u8(ST77XX_DISPOFF, Some(false));
         }
     }
 
@@ -285,10 +200,10 @@ impl<'a> St7796sManager<'a> {
         let y_draw: u32 = y as u32 + self.y_start as u32;
         let x_address = (x_draw << 16) | (x_draw + w as u32 - 1);
         let y_address = (y_draw << 16) | (y_draw + h as u32 - 1);
-        self.write_u8(ST77XX_CASET, false);
-        self.write_u32(x_address, true);
-        self.write_u8(ST77XX_RASET, false);
-        self.write_u32(y_address, true);
-        self.write_u8(ST77XX_RAMWR, false);
+        self.spi_master.write_u8(ST77XX_CASET, Some(false));
+        self.spi_master.write_u32(x_address, Some(true));
+        self.spi_master.write_u8(ST77XX_RASET, Some(false));
+        self.spi_master.write_u32(y_address, Some(true));
+        self.spi_master.write_u8(ST77XX_RAMWR, Some(false));
     }
 }

@@ -124,14 +124,14 @@ pub struct SpiPinsMaster<'a> {
 }
 
 /// SPI master implementation with blocking operations.
-pub struct SpiMasterCore<'a> {
+pub struct SoftwareSpiMasterConfigurable<'a> {
     /// SPI pins used by the master.
     pub pins: SpiPinsMaster<'a>,
     /// Configuration for the SPI master.
     pub config: SpiConfig,
 }
 
-impl<'a> SpiMasterCore<'a> {
+impl<'a> SoftwareSpiMasterConfigurable<'a> {
     /// Creates a new instance of `SpiMasterBlocking`.
     ///
     /// # Arguments
@@ -302,62 +302,142 @@ impl<'a> SpiMasterCore<'a> {
             *x &= !(1 << bit_index);
         }
     }
+
+    /// Performs a full-duplex SPI transfer of a single byte while blocking
+    ///
+    /// # Arguments
+    ///
+    /// * `spi_master' - The pins and configuration to use
+    /// * `dout` - The word containing at least n_bits to send (starting at lsb)
+    /// * `n_bits` - Number of bits to send
+    /// * `is_data` - If provided, will toggle the ds pin to indicate whether is a data (true) or command (false) packet.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(u8)` containing the received byte if the MISO pin is configured.
+    /// * `None` if the MISO pin is not configured.
+    pub fn read_and_write_blocking(
+        &mut self,
+        dout: u32,
+        n_bits: SpiWordSize,
+        is_data: Option<bool>,
+    ) -> Option<u32> {
+        let mut result: u32 = 0;
+        self.cs_on();
+        if let Some(x) = is_data {
+            if x {
+                self.set_data_mode();
+            } else {
+                self.set_command_mode();
+            }
+        }
+        let mut delay_start;
+        let limit = get_size(n_bits);
+        for i in 0..limit {
+            self.clk_off();
+            delay_start = Instant::now();
+            if self.get_bit(dout, i, n_bits) {
+                self.mosi_on();
+            } else {
+                self.mosi_off();
+            }
+            while delay_start.elapsed() < Duration::from_micros(self.config.half_bit_period_micros)
+            {
+            }
+            self.clk_on();
+            delay_start = Instant::now();
+            if let Some(rx_bit) = self.read_miso() {
+                self.set_bit(&mut result, i, n_bits, rx_bit);
+            }
+            while delay_start.elapsed() < Duration::from_micros(self.config.half_bit_period_micros)
+            {
+            }
+        }
+        self.cs_off();
+        if self.pins.miso.is_some() {
+            Some(result)
+        } else {
+            None
+        }
+    }
 }
 
-/// Performs a full-duplex SPI transfer of a single byte while blocking
-///
-/// # Arguments
-///
-/// * `spi_master' - The pins and configuration to use
-/// * `dout` - The word containing at least n_bits to send (starting at lsb)
-/// * `n_bits` - Number of bits to send
-/// * `is_data` - If provided, will toggle the ds pin to indicate whether is a data (true) or command (false) packet.
-///
-/// # Returns
-///
-/// * `Some(u8)` containing the received byte if the MISO pin is configured.
-/// * `None` if the MISO pin is not configured.
-pub fn read_and_write_blocking(
-    spi_master: &mut SpiMasterCore,
-    dout: u32,
-    n_bits: SpiWordSize,
-    is_data: Option<bool>,
-) -> Option<u32> {
-    let mut result: u32 = 0;
-    spi_master.cs_on();
-    if let Some(x) = is_data {
-        if x {
-            spi_master.set_data_mode();
-        } else {
-            spi_master.set_command_mode();
+/// This is a
+pub struct FastSpiMode0<'a> {
+    /// SPI pins used by the master.
+    pub pins: SpiPinsMaster<'a>,
+}
+
+impl<'a> FastSpiMode0<'a> {
+    pub fn write_u8(&mut self, mut word: u8, is_data: Option<bool>) {
+        self.pins.cs.set_low();
+        if let Some(x) = self.pins.dc.as_mut() {
+            if let Some(y) = is_data {
+                if y {
+                    x.set_high();
+                } else {
+                    x.set_low();
+                }
+            }
         }
+        for _ in 0..8 {
+            self.pins.sclk.set_low();
+            if (word & 0x80) > 0 {
+                self.pins.mosi.set_high()
+            } else {
+                self.pins.mosi.set_low()
+            }
+            self.pins.sclk.set_high();
+            word <<= 1;
+        }
+        self.pins.cs.set_high();
     }
-    let mut delay_start;
-    let limit = get_size(n_bits);
-    for i in 0..limit {
-        spi_master.clk_off();
-        delay_start = Instant::now();
-        if spi_master.get_bit(dout, i, n_bits) {
-            spi_master.mosi_on();
-        } else {
-            spi_master.mosi_off();
+
+    pub fn write_u16(&mut self, mut word: u16, is_data: Option<bool>) {
+        self.pins.cs.set_low();
+        if let Some(x) = self.pins.dc.as_mut() {
+            if let Some(y) = is_data {
+                if y {
+                    x.set_high();
+                } else {
+                    x.set_low();
+                }
+            }
         }
-        while delay_start.elapsed()
-            < Duration::from_micros(spi_master.config.half_bit_period_micros)
-        {}
-        spi_master.clk_on();
-        delay_start = Instant::now();
-        if let Some(rx_bit) = spi_master.read_miso() {
-            spi_master.set_bit(&mut result, i, n_bits, rx_bit);
+        for _ in 0..16 {
+            self.pins.sclk.set_low();
+            if (word & 0x8000) > 0 {
+                self.pins.mosi.set_high()
+            } else {
+                self.pins.mosi.set_low()
+            }
+            self.pins.sclk.set_high();
+            word <<= 1;
         }
-        while delay_start.elapsed()
-            < Duration::from_micros(spi_master.config.half_bit_period_micros)
-        {}
+        self.pins.cs.set_high();
     }
-    spi_master.cs_off();
-    if spi_master.pins.miso.is_some() {
-        Some(result)
-    } else {
-        None
+
+    pub fn write_u32(&mut self, mut word: u32, is_data: Option<bool>) {
+        self.pins.cs.set_low();
+        if let Some(x) = self.pins.dc.as_mut() {
+            if let Some(y) = is_data {
+                if y {
+                    x.set_high();
+                } else {
+                    x.set_low();
+                }
+            }
+        }
+        for _ in 0..32 {
+            self.pins.sclk.set_low();
+            if (word & 0x8000_0000) > 0 {
+                self.pins.mosi.set_high()
+            } else {
+                self.pins.mosi.set_low()
+            }
+            self.pins.sclk.set_high();
+            word <<= 1;
+        }
+        self.pins.cs.set_high();
     }
 }

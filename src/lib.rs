@@ -2,5 +2,5 @@
 pub mod chronometer;
 pub mod speed_trap;
 pub mod spi_master;
-pub mod st7796s_manager;
-pub mod tb_st7796s;
+pub mod st7789_display_engine;
+pub mod tb_st7789_display_engine;
