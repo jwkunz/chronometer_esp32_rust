@@ -31,6 +31,8 @@ pub struct SpiConfig {
     pub data_polarity: Polarity,
     /// Data (active) or command (innactive) polarity  for interpreting SPI communication.
     pub data_or_command_polarity: Polarity,
+    /// Polarity to reset the slave
+    pub reset_polarity: Polarity,
     /// Half the bit period in microseconds = 1E6 / (2 * baud_Hz)
     pub half_bit_period_micros: u64,
 }
@@ -50,20 +52,24 @@ impl SpiConfig {
     ///
     /// A new `SpiConfig` instance.
     pub fn new(
-        bit_ordering: BitOrdering,
-        clock_polarity: Polarity,
-        cs_polarity: Polarity,
-        data_polarity: Polarity,
-        data_or_command_polarity: Polarity,
-        baud_rate_hz: u64,
+        bit_ordering: Option<BitOrdering>,
+        clock_polarity: Option<Polarity>,
+        cs_polarity: Option<Polarity>,
+        data_polarity: Option<Polarity>,
+        data_vs_command_polarity: Option<Polarity>,
+        reset_polarity: Option<Polarity>,
+        baud_rate_hz: Option<u64>,
     ) -> SpiConfig {
         SpiConfig {
-            bit_ordering,
-            clock_polarity,
-            cs_polarity,
-            data_polarity,
-            data_or_command_polarity,
-            half_bit_period_micros: SpiConfig::calculate_half_period(baud_rate_hz),
+            bit_ordering: bit_ordering.unwrap_or(BitOrdering::MostSignificantBitFirst),
+            clock_polarity: clock_polarity.unwrap_or(Polarity::ActiveHigh),
+            cs_polarity: cs_polarity.unwrap_or(Polarity::ActiveLow),
+            data_polarity: data_polarity.unwrap_or(Polarity::ActiveHigh),
+            data_or_command_polarity: data_vs_command_polarity.unwrap_or(Polarity::ActiveHigh),
+            reset_polarity: reset_polarity.unwrap_or(Polarity::ActiveLow),
+            half_bit_period_micros: SpiConfig::calculate_half_period(
+                baud_rate_hz.unwrap_or(32_000_000),
+            ),
         }
     }
     /// Calculates half the bit period in microseconds.
@@ -91,7 +97,6 @@ pub enum SpiWordSize {
     EightBits,
     SixteenBits,
     ThirtyTwoBits,
-    SixtyFourBits,
 }
 /// Gets the size from the WordSize
 pub fn get_size(x: SpiWordSize) -> usize {
@@ -99,7 +104,6 @@ pub fn get_size(x: SpiWordSize) -> usize {
         SpiWordSize::EightBits => 8,
         SpiWordSize::SixteenBits => 16,
         SpiWordSize::ThirtyTwoBits => 32,
-        SpiWordSize::SixtyFourBits => 64,
     }
 }
 
@@ -114,7 +118,9 @@ pub struct SpiPinsMaster<'a> {
     /// Chip Select (CS) pin.
     pub cs: Output<'a>,
     /// Data or command
-    pub dc: Output<'a>,
+    pub dc: Option<Output<'a>>,
+    /// Reset
+    pub rst: Option<Output<'a>>,
 }
 
 /// SPI master implementation with blocking operations.
@@ -142,17 +148,47 @@ impl<'a> SpiMasterCore<'a> {
 
     /// Interpret the next write as data
     pub fn set_data_mode(&mut self) {
-        match self.config.data_or_command_polarity {
-            Polarity::ActiveHigh => self.pins.dc.set_high(),
-            Polarity::ActiveLow => self.pins.dc.set_low(),
+        if let Some(x) = self.pins.dc.as_mut() {
+            match self.config.data_or_command_polarity {
+                Polarity::ActiveHigh => x.set_high(),
+                Polarity::ActiveLow => x.set_low(),
+            }
         }
     }
 
     /// Interpret the next write as a command
     pub fn set_command_mode(&mut self) {
-        match self.config.data_or_command_polarity {
-            Polarity::ActiveHigh => self.pins.dc.set_low(),
-            Polarity::ActiveLow => self.pins.dc.set_high(),
+        if let Some(x) = self.pins.dc.as_mut() {
+            match self.config.data_or_command_polarity {
+                Polarity::ActiveHigh => x.set_low(),
+                Polarity::ActiveLow => x.set_high(),
+            }
+        }
+    }
+
+    /// Apply reset then release it
+    pub fn apply_reset(&mut self) {
+        if let Some(x) = self.pins.rst.as_mut() {
+            match self.config.reset_polarity {
+                Polarity::ActiveHigh => {
+                    x.set_low();
+                    let delay_start = Instant::now();
+                    while delay_start.elapsed()
+                        < Duration::from_micros(self.config.half_bit_period_micros)
+                    {
+                    }
+                    x.set_high()
+                }
+                Polarity::ActiveLow => {
+                    x.set_high();
+                    let delay_start = Instant::now();
+                    while delay_start.elapsed()
+                        < Duration::from_micros(self.config.half_bit_period_micros)
+                    {
+                    }
+                    x.set_low()
+                }
+            }
         }
     }
 
@@ -233,7 +269,7 @@ impl<'a> SpiMasterCore<'a> {
     /// # Returns
     ///
     /// `true` if the bit is set, `false` otherwise.
-    fn get_bit(&self, x: u64, position: usize, n_bits: SpiWordSize) -> bool {
+    fn get_bit(&self, x: u32, position: usize, n_bits: SpiWordSize) -> bool {
         let bit_index = match self.config.bit_ordering {
             BitOrdering::LeastSignificantBitFirst => position,
             BitOrdering::MostSignificantBitFirst => {
@@ -252,7 +288,7 @@ impl<'a> SpiMasterCore<'a> {
     /// * `position` - The bit position to set or clear.
     /// * `n_bits` - The number of bits in the word
     /// * `value` - `true` to set the bit, `false` to clear it.
-    fn set_bit(&self, x: &mut u64, position: usize, n_bits: SpiWordSize, value: bool) {
+    fn set_bit(&self, x: &mut u32, position: usize, n_bits: SpiWordSize, value: bool) {
         let bit_index = match self.config.bit_ordering {
             BitOrdering::LeastSignificantBitFirst => position,
             BitOrdering::MostSignificantBitFirst => {
@@ -275,6 +311,7 @@ impl<'a> SpiMasterCore<'a> {
 /// * `spi_master' - The pins and configuration to use
 /// * `dout` - The word containing at least n_bits to send (starting at lsb)
 /// * `n_bits` - Number of bits to send
+/// * `is_data` - If provided, will toggle the ds pin to indicate whether is a data (true) or command (false) packet.
 ///
 /// # Returns
 ///
@@ -282,11 +319,19 @@ impl<'a> SpiMasterCore<'a> {
 /// * `None` if the MISO pin is not configured.
 pub fn read_and_write_blocking(
     spi_master: &mut SpiMasterCore,
-    dout: u64,
+    dout: u32,
     n_bits: SpiWordSize,
-) -> Option<u64> {
-    let mut result: u64 = 0;
+    is_data: Option<bool>,
+) -> Option<u32> {
+    let mut result: u32 = 0;
     spi_master.cs_on();
+    if let Some(x) = is_data {
+        if x {
+            spi_master.set_data_mode();
+        } else {
+            spi_master.set_command_mode();
+        }
+    }
     let mut delay_start;
     let limit = get_size(n_bits);
     for i in 0..limit {
@@ -316,104 +361,3 @@ pub fn read_and_write_blocking(
         None
     }
 }
-/*
-enum SpiMasterTaskState {
-    Idle,
-    Start,
-    Write,
-    Off,
-}
-
-pub struct SpiMasterTask<'a> {
-    spi_engine: SpiMasterCore<'a>,
-    current_state: SpiMasterTaskState,
-    send_data: Option<u8>,
-    receive_data: Option<u8>,
-    bit_counter: u8,
-}
-
-impl<'a> SpiMasterTask<'a> {
-    pub fn new(spi_engine: SpiMasterCore) -> SpiMasterTask {
-        SpiMasterTask {
-            spi_engine,
-            current_state: SpiMasterTaskState::Idle,
-            send_data: None,
-            receive_data: None,
-            bit_counter: 0,
-        }
-    }
-
-    pub fn load_to_send(&mut self, data: u8) {
-        self.current_state = SpiMasterTaskState::Start;
-        self.send_data = Some(data);
-    }
-
-    pub fn receive_data_available(&mut self) -> bool {
-        self.receive_data.is_some()
-    }
-
-    pub fn get_received(&mut self) -> Option<u8> {
-        match self.current_state {
-            SpiMasterTaskState::Idle => {
-                if let Some(x) = self.receive_data {
-                    self.receive_data = None;
-                    Some(x)
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
-
-    pub fn tick(&mut self) {
-        self.current_state = match self.current_state {
-            SpiMasterTaskState::Idle => {
-                self.bit_counter = 0;
-                if self.send_data.is_some() {
-                    SpiMasterTaskState::Start
-                } else {
-                    SpiMasterTaskState::Idle
-                }
-            }
-            SpiMasterTaskState::Start => {
-                self.spi_engine.cs_on();
-                self.receive_data = if self.spi_engine.pins.miso.is_some() {
-                    Some(0)
-                } else {
-                    None
-                };
-                SpiMasterTaskState::Off
-            }
-            SpiMasterTaskState::Off => {
-                self.spi_engine.clk_off();
-                if self
-                    .spi_engine
-                    .get_bit(self.send_data.unwrap(), self.bit_counter)
-                {
-                    self.spi_engine.mosi_on();
-                } else {
-                    self.spi_engine.mosi_off();
-                }
-                SpiMasterTaskState::Write
-            }
-            SpiMasterTaskState::Write => {
-                self.spi_engine.clk_on();
-                if let Some(rx_bit) = self.spi_engine.read_miso() {
-                    self.spi_engine.set_bit(
-                        &mut self.receive_data.unwrap(),
-                        self.bit_counter,
-                        rx_bit,
-                    );
-                }
-                self.bit_counter += 1;
-                if self.bit_counter == 8 {
-                    SpiMasterTaskState::Idle
-                } else {
-                    SpiMasterTaskState::Off
-                }
-            }
-        }
-    }
-}
-*/
