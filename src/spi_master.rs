@@ -123,7 +123,7 @@ pub struct SpiPinsMaster<'a> {
     pub rst: Option<Output<'a>>,
 }
 
-/// SPI master implementation with blocking operations.
+/// SPI master implementation that is highly configurable but it slow
 pub struct SoftwareSpiMasterConfigurable<'a> {
     /// SPI pins used by the master.
     pub pins: SpiPinsMaster<'a>,
@@ -132,7 +132,7 @@ pub struct SoftwareSpiMasterConfigurable<'a> {
 }
 
 impl<'a> SoftwareSpiMasterConfigurable<'a> {
-    /// Creates a new instance of `SpiMasterBlocking`.
+    /// Creates a new instance of `SoftwareSpiMasterConfigurable`.
     ///
     /// # Arguments
     ///
@@ -141,7 +141,7 @@ impl<'a> SoftwareSpiMasterConfigurable<'a> {
     ///
     /// # Returns
     ///
-    /// A new `SpiMasterBlocking` instance.
+    /// A new `SoftwareSpiMasterConfigurable` instance.
     pub fn new(pins: SpiPinsMaster<'a>, config: SpiConfig) -> Self {
         Self { pins, config }
     }
@@ -362,17 +362,24 @@ impl<'a> SoftwareSpiMasterConfigurable<'a> {
     }
 }
 
-/// This is a
+/// This is an fast optimized SPI implementation for the format of
+/// Most Significant Bit First
+/// Data mode = dc pin high (or does not exist with None options)
+/// Reset is active low
+/// CS is active low
+/// SCLK and MOSI are active high
 pub struct FastSpiMode0<'a> {
     /// SPI pins used by the master.
     pub pins: SpiPinsMaster<'a>,
 }
 
+/// Wse_data_mode determines whether to toggle the dc pin (if it exists) for data (true) or command (false)
 impl<'a> FastSpiMode0<'a> {
-    pub fn write_u8(&mut self, mut word: u8, is_data: Option<bool>) {
+    /// Fast write a u8.
+    pub fn write_u8(&mut self, mut word: u8, use_data_mode: Option<bool>) {
         self.pins.cs.set_low();
         if let Some(x) = self.pins.dc.as_mut() {
-            if let Some(y) = is_data {
+            if let Some(y) = use_data_mode {
                 if y {
                     x.set_high();
                 } else {
@@ -393,10 +400,11 @@ impl<'a> FastSpiMode0<'a> {
         self.pins.cs.set_high();
     }
 
-    pub fn write_u16(&mut self, mut word: u16, is_data: Option<bool>) {
+    /// Fast write a u16.
+    pub fn write_u16(&mut self, mut word: u16, use_data_mode: Option<bool>) {
         self.pins.cs.set_low();
         if let Some(x) = self.pins.dc.as_mut() {
-            if let Some(y) = is_data {
+            if let Some(y) = use_data_mode {
                 if y {
                     x.set_high();
                 } else {
@@ -417,10 +425,11 @@ impl<'a> FastSpiMode0<'a> {
         self.pins.cs.set_high();
     }
 
-    pub fn write_u32(&mut self, mut word: u32, is_data: Option<bool>) {
+    /// Fast write a u32.
+    pub fn write_u32(&mut self, mut word: u32, use_data_mode: Option<bool>) {
         self.pins.cs.set_low();
         if let Some(x) = self.pins.dc.as_mut() {
-            if let Some(y) = is_data {
+            if let Some(y) = use_data_mode {
                 if y {
                     x.set_high();
                 } else {
