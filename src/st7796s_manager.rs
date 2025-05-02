@@ -120,31 +120,89 @@ impl<'a> St7796sManager<'a> {
         }
     }
 
-    fn write_u8(&mut self, word: u8, is_data: bool) {
+    fn write_u8(&mut self, mut word: u8, is_data: bool) {
+        /*
         read_and_write_blocking(
             &mut self.spi_master,
             word as u32,
             SpiWordSize::EightBits,
             Some(is_data),
         );
+        */
+
+        self.spi_master.pins.cs.set_low();
+        if is_data {
+            self.spi_master.set_data_mode();
+        } else {
+            self.spi_master.set_command_mode();
+        }
+        for _ in 0..8 {
+            self.spi_master.pins.sclk.set_low();
+            if (word & 0x80) > 0 {
+                self.spi_master.pins.mosi.set_high()
+            } else {
+                self.spi_master.pins.mosi.set_low()
+            }
+            self.spi_master.pins.sclk.set_high();
+            word <<= 1;
+        }
+        self.spi_master.pins.cs.set_high();
     }
 
-    fn write_u16(&mut self, word: u16, is_data: bool) {
+    fn write_u16(&mut self, mut word: u16, is_data: bool) {
+        /*
         read_and_write_blocking(
             &mut self.spi_master,
             word as u32,
             SpiWordSize::SixteenBits,
             Some(is_data),
         );
+        */
+        self.spi_master.pins.cs.set_low();
+        if is_data {
+            self.spi_master.set_data_mode();
+        } else {
+            self.spi_master.set_command_mode();
+        }
+        for _ in 0..16 {
+            self.spi_master.pins.sclk.set_low();
+            if (word & 0x8000) > 0 {
+                self.spi_master.pins.mosi.set_high()
+            } else {
+                self.spi_master.pins.mosi.set_low()
+            }
+            self.spi_master.pins.sclk.set_high();
+            word <<= 1;
+        }
+        self.spi_master.pins.cs.set_high();
     }
 
-    fn write_u32(&mut self, word: u32, is_data: bool) {
+    fn write_u32(&mut self, mut word: u32, is_data: bool) {
+        /*
         read_and_write_blocking(
             &mut self.spi_master,
             word as u32,
             SpiWordSize::ThirtyTwoBits,
             Some(is_data),
         );
+        */
+        self.spi_master.pins.cs.set_low();
+        if is_data {
+            self.spi_master.set_data_mode();
+        } else {
+            self.spi_master.set_command_mode();
+        }
+        for _ in 0..32 {
+            self.spi_master.pins.sclk.set_low();
+            if (word & 0x8000_0000) > 0 {
+                self.spi_master.pins.mosi.set_high()
+            } else {
+                self.spi_master.pins.mosi.set_low()
+            }
+            self.spi_master.pins.sclk.set_high();
+            word <<= 1;
+        }
+        self.spi_master.pins.cs.set_high();
     }
 
     pub fn display_initialization_sequence(&mut self) {

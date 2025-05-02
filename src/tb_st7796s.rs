@@ -1,7 +1,7 @@
 use esp_hal::{
     gpio::{Input, InputConfig, Output, OutputConfig},
     peripherals::Peripherals,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use crate::{
@@ -75,7 +75,7 @@ pub fn tb_st7796s(peripherals: Peripherals) -> ! {
     };
     esp_println::println!("Defining spi config...");
     // Verified correct config by testing screen enable/disable display
-    let spi_config = SpiConfig::new(None, None, None, None, None, None, Some(100_000_000));
+    let spi_config = SpiConfig::new(None, None, None, None, None, None, Some(1_000_000));
     esp_println::println!("Defining screen manager...");
     let mut screen =
         St7796sManager::new(SpiMasterCore::new(pins, spi_config), lcd_width, lcd_height);
@@ -89,9 +89,11 @@ pub fn tb_st7796s(peripherals: Peripherals) -> ! {
         let start_time = Instant::now();
         lfsr_16(&mut color);
         screen.fill_screen(color);
+        screen.enable_display(true);
         esp_println::println!(
             "Render time: { } seconds",
             start_time.elapsed().as_micros() as f64 / 1E6
         );
+        while start_time.elapsed() < esp_hal::time::Duration::from_secs(1) {}
     }
 }
