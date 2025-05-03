@@ -1,10 +1,10 @@
-use core::cmp::min;
+use core::{cmp::min, f32::consts::PI};
 
 use esp_hal::time::{Duration, Instant};
 
 use crate::spi_master::{FastSpiMode0, SpiPinsMaster};
 
-use libm::{ceilf, cosf, roundf, sinf, sqrtf};
+use libm::{ceilf, cosf, floorf, roundf, sinf, sqrtf};
 
 /// Command to perform no operation.
 const ST77XX_NOP: u8 = 0x00;
@@ -98,12 +98,12 @@ fn blocking_delay_ms(x: u64) {
 
 /// A primitive triangle to use
 pub struct Triangle {
-    pub x1: u16,
-    pub y1: u16,
-    pub x2: u16,
-    pub y2: u16,
-    pub x3: u16,
-    pub y3: u16,
+    pub x1: f32,
+    pub y1: f32,
+    pub x2: f32,
+    pub y2: f32,
+    pub x3: f32,
+    pub y3: f32,
 }
 
 /// A display engine for the ST7789 LCD controller, providing methods for initialization,
@@ -246,6 +246,19 @@ impl<'a> St7789DisplayEngine<'a> {
         self.spi_master.write_u8(madctl, Some(true));
     }
 
+    /// Configures the address window for subsequent drawing operations.
+    fn set_address_window(&mut self, x: u16, y: u16, w: u16, h: u16) {
+        let x_draw: u32 = x as u32 + self.x_start as u32;
+        let y_draw: u32 = y as u32 + self.y_start as u32;
+        let x_address = (x_draw << 16) | (x_draw + w as u32 - 1);
+        let y_address = (y_draw << 16) | (y_draw + h as u32 - 1);
+        self.spi_master.write_u8(ST77XX_CASET, Some(false));
+        self.spi_master.write_u32(x_address, Some(true));
+        self.spi_master.write_u8(ST77XX_RASET, Some(false));
+        self.spi_master.write_u32(y_address, Some(true));
+        self.spi_master.write_u8(ST77XX_RAMWR, Some(false));
+    }
+
     /// Helper function for rounding and clippling f32 x pixels
     fn round_and_clip_x(&self, x: f32) -> Option<u16> {
         let rounded = roundf(x);
@@ -286,24 +299,6 @@ impl<'a> St7789DisplayEngine<'a> {
         }
     }
 
-    /// Fills a single pixel at the specified coordinates with clipping checks.
-    ///
-    /// # Arguments
-    ///
-    /// * `x` - The x-coordinate of the pixel.
-    /// * `y` - The y-coordinate of the pixel.
-    /// * `color` - The color to fill the pixel with, in RGB565 format.
-    ///
-    /// # Description
-    ///
-    /// This function ensures that the pixel coordinates are within the display's boundaries
-    /// before attempting to draw the pixel.
-    pub fn fill_pixel_with_clip_check(&mut self, x: u16, y: u16, color: Color565) {
-        if (x < self.window_width) && (y < self.window_height) {
-            self.fill_rectangle(x, y, 1, 1, color)
-        }
-    }
-
     /// Fills a single pixel at the specified coordinates without clipping checks.
     ///
     /// # Arguments
@@ -321,6 +316,26 @@ impl<'a> St7789DisplayEngine<'a> {
         self.fill_rectangle(x, y, 1, 1, color)
     }
 
+    /// Fills a single pixel at the specified coordinates with clipping checks.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - The x-coordinate of the pixel.
+    /// * `y` - The y-coordinate of the pixel.
+    /// * `color` - The color to fill the pixel with, in RGB565 format.
+    ///
+    /// # Description
+    ///
+    /// This function ensures that the pixel coordinates are within the display's boundaries
+    /// before attempting to draw the pixel.
+    pub fn fill_pixel_after_rounding_and_clipping(&mut self, x: f32, y: f32, color: Color565) {
+        if let Some(px) = self.round_and_clip_x(x) {
+            if let Some(py) = self.round_and_clip_y(y) {
+                self.fill_rectangle(px, py, 1, 1, color)
+            }
+        }
+    }
+
     /// Draws a horizontal line on the display with a thickness of 1 pixel.
     ///
     /// # Arguments
@@ -334,12 +349,16 @@ impl<'a> St7789DisplayEngine<'a> {
     ///
     /// This function draws a horizontal line by filling a 1-pixel-high rectangle
     /// between the specified start and end x-coordinates.
-    pub fn draw_thin_horizontal_line(&mut self, x_start: u16, x_end: u16, y: u16, color: Color565) {
-        if y < self.window_height {
-            if x_end > x_start {
-                self.fill_rectangle(x_start, y, x_end - x_start, 1, color);
-            } else {
-                self.fill_rectangle(x_end, y, x_start - x_end, 1, color);
+    pub fn draw_thin_horizontal_line(&mut self, x_start: f32, x_end: f32, y: f32, color: Color565) {
+        if let Some(py) = self.round_and_clip_y(y) {
+            if let Some(pxs) = self.round_and_clip_x(x_start) {
+                if let Some(pxe) = self.round_and_clip_x(x_end) {
+                    if pxs < pxe {
+                        self.fill_rectangle(pxs, py, pxe - pxs, 1, color)
+                    } else {
+                        self.fill_rectangle(pxe, py, pxs - pxe, 1, color)
+                    }
+                }
             }
         }
     }
@@ -357,12 +376,16 @@ impl<'a> St7789DisplayEngine<'a> {
     ///
     /// This function draws a vertical line by filling a 1-pixel-wide rectangle
     /// between the specified start and end y-coordinates.
-    pub fn draw_thin_vertical_line(&mut self, x: u16, y_start: u16, y_end: u16, color: Color565) {
-        if x < self.window_width {
-            if y_end > y_start {
-                self.fill_rectangle(x, y_start, 1, y_end - y_start, color);
-            } else {
-                self.fill_rectangle(x, y_end, 1, y_start - y_end, color);
+    pub fn draw_thin_vertical_line(&mut self, x: f32, y_start: f32, y_end: f32, color: Color565) {
+        if let Some(px) = self.round_and_clip_x(x) {
+            if let Some(pys) = self.round_and_clip_y(y_start) {
+                if let Some(pye) = self.round_and_clip_y(y_end) {
+                    if pys < pye {
+                        self.fill_rectangle(px, pys, 1, pye - pys, color)
+                    } else {
+                        self.fill_rectangle(px, pye, 1, pys - pye, color)
+                    }
+                }
             }
         }
     }
@@ -384,25 +407,21 @@ impl<'a> St7789DisplayEngine<'a> {
     /// to the display's boundaries.
     pub fn trace_thin_line_start_end(
         &mut self,
-        start_x: u16,
-        start_y: u16,
-        end_x: u16,
-        end_y: u16,
+        start_x: f32,
+        start_y: f32,
+        end_x: f32,
+        end_y: f32,
         color: Color565,
     ) {
-        let dx = end_x as f32 - start_x as f32;
-        let dy = end_y as f32 - start_y as f32;
+        let dx = end_x - start_x;
+        let dy = end_y - start_y;
         let len = sqrtf(dx * dx + dy * dy);
         let dy_dt = dy / len;
         let dx_dt = dx / len;
-        for t in 0..=(ceilf(len) as u16) {
-            let px = start_x as f32 + dx_dt * (t as f32);
-            if let Some(pxr) = self.round_and_clip_x(px) {
-                let py = start_y as f32 + dy_dt * (t as f32);
-                if let Some(pyr) = self.round_and_clip_y(py) {
-                    self.fill_pixel(pxr, pyr, color)
-                }
-            }
+        for t in 0..=(roundf(len) as u16) {
+            let px = start_x + dx_dt * (t as f32);
+            let py = start_y + dy_dt * (t as f32);
+            self.fill_pixel_after_rounding_and_clipping(px, py, color);
         }
     }
 
@@ -424,28 +443,20 @@ impl<'a> St7789DisplayEngine<'a> {
     /// to the display's boundaries.
     pub fn trace_thick_line_start_end(
         &mut self,
-        start_x: u16,
-        start_y: u16,
-        end_x: u16,
-        end_y: u16,
-        thickness: u16,
+        start_x: f32,
+        start_y: f32,
+        end_x: f32,
+        end_y: f32,
+        thickness: f32,
         color: Color565,
     ) {
-        let dx = end_x as f32 - start_x as f32;
-        let dy = end_y as f32 - start_y as f32;
-        let len = sqrtf(dx * dx + dy * dy);
+        let dx = end_x - start_x;
+        let dy = end_y - start_y;
+        let len = roundf(sqrtf(dx * dx + dy * dy));
 
         if len == 0.0 {
             // Draw a filled circle if start == end
-            for tx in -(thickness as i16) / 2..=thickness as i16 / 2 {
-                for ty in -(thickness as i16) / 2..=thickness as i16 / 2 {
-                    if let Some(pxr) = self.round_and_clip_x(start_x as f32 + tx as f32) {
-                        if let Some(pyr) = self.round_and_clip_y(start_y as f32 + ty as f32) {
-                            self.fill_pixel(pxr, pyr, color)
-                        }
-                    }
-                }
-            }
+            self.fill_circle(start_x, start_y, thickness * 0.5, color);
             return;
         }
 
@@ -454,74 +465,67 @@ impl<'a> St7789DisplayEngine<'a> {
         let perp_x = -dy_dt;
         let perp_y = dx_dt;
 
-        let half_thick = ceilf((thickness as f32) / 2.0);
+        let half_thick = ceilf((thickness) / 2.0);
         let oversample_rate: f32 = 1.5;
 
-        for t in 0..=(ceilf(len) as u16) {
-            let fx = start_x as f32 + dx_dt * (t as f32);
-            let fy = start_y as f32 + dy_dt * (t as f32);
+        for t in 0..=(len as u16) {
+            let fx = start_x + dx_dt * (t as f32);
+            let fy = start_y + dy_dt * (t as f32);
             // Oversample to avoid missing pixels in gaps
-            for w in (-oversample_rate * half_thick) as i32..=(oversample_rate * half_thick) as i32
+            for w in (-oversample_rate * half_thick) as i16..=(oversample_rate * half_thick) as i16
             {
-                if let Some(pxr) = self.round_and_clip_x(fx + perp_x * (w as f32) / oversample_rate)
-                {
-                    if let Some(pyr) =
-                        self.round_and_clip_y(fy + perp_y * (w as f32) / oversample_rate)
-                    {
-                        self.fill_pixel(pxr, pyr, color)
-                    }
-                }
+                let px = fx + perp_x * (w as f32) / oversample_rate;
+                let py = fy + perp_y * (w as f32) / oversample_rate;
+                self.fill_pixel_after_rounding_and_clipping(px, py, color);
             }
         }
     }
 
     /// Fills a circle starting at x, y with radius r
-    pub fn fill_circle(&mut self, x: u16, y: u16, radius: u16, color: Color565) {
-        let radius_squared = (radius as f32) * (radius as f32);
-        self.fill_pixel_with_clip_check(x, y, color);
-        for i in 0..radius {
-            for j in 0..radius {
+    pub fn fill_circle(&mut self, x: f32, y: f32, radius: f32, color: Color565) {
+        let radius_squared = radius * radius;
+        self.fill_pixel_after_rounding_and_clipping(x, y, color);
+        let radius_ceil = ceilf(radius) as u16;
+        for i in 0..radius_ceil {
+            for j in 0..radius_ceil {
                 let d_squared = (i * i + j * j) as f32;
                 if d_squared < radius_squared {
-                    self.fill_pixel_with_clip_check(x + i, y + j, color);
-                    let pos_x = i < x;
-                    let pos_y = j < y;
-                    if pos_x && pos_y {
-                        self.fill_pixel_with_clip_check(x - i, y - j, color);
-                    }
-                    if pos_x {
-                        self.fill_pixel_with_clip_check(x - i, y + j, color);
-                    }
-                    if pos_y {
-                        self.fill_pixel_with_clip_check(x + i, y - j, color);
-                    }
+                    let px_p = x + (i as f32);
+                    let px_n = x - (i as f32);
+                    let py_p = y + (j as f32);
+                    let py_n = y - (j as f32);
+                    self.fill_pixel_after_rounding_and_clipping(px_p, py_p, color);
+                    self.fill_pixel_after_rounding_and_clipping(px_p, py_n, color);
+                    self.fill_pixel_after_rounding_and_clipping(px_n, py_p, color);
+                    self.fill_pixel_after_rounding_and_clipping(px_n, py_n, color);
                 }
             }
         }
     }
 
     /// Traces a circle starting at x, y with radius r
-    pub fn trace_circle(&mut self, x: u16, y: u16, radius: u16, thickness: u16, color: Color565) {
-        let radius_squared = (radius as f32) * (radius as f32);
-        let thickness_squared = (thickness as f32) * (thickness as f32);
-        for i in 0..(radius + thickness) {
-            for j in 0..(radius + thickness) {
-                let d_squared = (i * i + j * j) as f32;
-                if (d_squared - radius_squared).abs() < thickness_squared {
-                    self.fill_pixel_with_clip_check(x + i, y + j, color);
-                    let pos_x = i < x;
-                    let pos_y = j < y;
-                    if pos_x && pos_y {
-                        self.fill_pixel_with_clip_check(x - i, y - j, color);
-                    }
-                    if pos_x {
-                        self.fill_pixel_with_clip_check(x - i, y + j, color);
-                    }
-                    if pos_y {
-                        self.fill_pixel_with_clip_check(x + i, y - j, color);
-                    }
-                }
+    pub fn fill_thick_ring(
+        &mut self,
+        x: f32,
+        y: f32,
+        center_radius: f32,
+        thickness: f32,
+        color: Color565,
+    ) {
+        let half_thickness = thickness * 0.5;
+        // Oversampling the deltas
+        let d_theta = 0.7 * 1.0 / (center_radius + half_thickness);
+        let d_r = 0.7 * thickness / ceilf(thickness);
+        let mut theta = 0.0;
+        while theta < 2.0 * PI {
+            let mut r = center_radius - half_thickness;
+            while r < center_radius + half_thickness {
+                let px = x + r * cosf(theta);
+                let py = y + r * sinf(theta);
+                self.fill_pixel_after_rounding_and_clipping(px, py, color);
+                r += d_r;
             }
+            theta += d_theta;
         }
     }
 
@@ -545,45 +549,45 @@ impl<'a> St7789DisplayEngine<'a> {
             (triangle.x2, triangle.y2),
             (triangle.x3, triangle.y3),
         ];
-        vertices.sort_unstable_by(|a, b| a.1.cmp(&b.1));
+        vertices
+            .sort_unstable_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(core::cmp::Ordering::Equal));
 
         let (x1, y1) = vertices[0];
         let (x2, y2) = vertices[1];
         let (x3, y3) = vertices[2];
 
         // Calculate the slopes of the triangle edges.
-        let slope1 = if y2 != y1 {
-            (x2 as f32 - x1 as f32) / (y2 as f32 - y1 as f32)
-        } else {
-            0.0
-        };
-        let slope2 = if y3 != y1 {
-            (x3 as f32 - x1 as f32) / (y3 as f32 - y1 as f32)
-        } else {
-            0.0
-        };
-        let slope3 = if y3 != y2 {
-            (x3 as f32 - x2 as f32) / (y3 as f32 - y2 as f32)
-        } else {
-            0.0
-        };
+        let slope1 = if y2 != y1 { (x2 - x1) / (y2 - y1) } else { 0.0 };
+        let slope2 = if y3 != y1 { (x3 - x1) / (y3 - y1) } else { 0.0 };
+        let slope3 = if y3 != y2 { (x3 - x2) / (y3 - y2) } else { 0.0 };
+
+        let mut y_gap;
+        let mut y;
+        let mut x_start;
+        let mut x_end;
 
         // Fill the top part of the triangle (from y1 to y2).
-        let mut x_start = x1 as f32;
-        let mut x_end = x1 as f32;
-        for y in y1..=y2 {
-            self.draw_thin_horizontal_line(roundf(x_start) as u16, roundf(x_end) as u16, y, color);
+        x_start = x1;
+        x_end = x1;
+        y_gap = y2 - y1;
+        y = y1;
+        while y < y2 {
+            self.trace_thin_line_start_end(x_start, y, x_end, y, color);
             x_start += slope1;
             x_end += slope2;
+            y += 1.0;
         }
 
         // Fill the bottom part of the triangle (from y2 to y3).
-        x_start = x2 as f32;
-        x_end = x1 as f32 + slope2 * (y2 as f32 - y1 as f32);
-        for y in y2..=y3 {
-            self.draw_thin_horizontal_line(roundf(x_start) as u16, roundf(x_end) as u16, y, color);
+        x_start = x2;
+        x_end = x1 + slope2 * (y2 - y1);
+        y_gap = y3 - y2;
+        y = y2;
+        while y < y3 {
+            self.trace_thin_line_start_end(x_start, y, x_end, y, color);
             x_start += slope3;
             x_end += slope2;
+            y += 1.0;
         }
     }
 
@@ -598,11 +602,11 @@ impl<'a> St7789DisplayEngine<'a> {
     /// * `color` - The color to fill the polygon with.
     pub fn fill_regular_polygon(
         &mut self,
-        center_x: u16,
-        center_y: u16,
-        radius: u16,
+        center_x: f32,
+        center_y: f32,
+        radius: f32,
         rotation_deg: f32,
-        sides: u16,
+        sides: u8,
         color: Color565,
     ) {
         if sides < 3 {
@@ -621,27 +625,18 @@ impl<'a> St7789DisplayEngine<'a> {
             let curr_x = center_x as f32 + radius as f32 * libm::cosf(angle);
             let curr_y = center_y as f32 + radius as f32 * libm::sinf(angle);
 
-            // If the triangle fits on the screen
-            if let Some(prev_x_clipped) = self.round_and_clip_x(prev_x) {
-                if let Some(prev_y_clipped) = self.round_and_clip_y(prev_y) {
-                    if let Some(curr_x_clipped) = self.round_and_clip_x(curr_x) {
-                        if let Some(curr_y_clipped) = self.round_and_clip_y(curr_y) {
-                            // Draw the triangle formed by the center, the previous vertex, and the current vertex.
-                            self.fill_triangle(
-                                Triangle {
-                                    x1: center_x,
-                                    y1: center_y,
-                                    x2: prev_x_clipped,
-                                    y2: prev_y_clipped,
-                                    x3: curr_x_clipped,
-                                    y3: curr_y_clipped,
-                                },
-                                color,
-                            );
-                        }
-                    }
-                }
-            }
+            // Draw the triangle formed by the center, the previous vertex, and the current vertex.
+            self.fill_triangle(
+                Triangle {
+                    x1: center_x,
+                    y1: center_y,
+                    x2: prev_x,
+                    y2: prev_y,
+                    x3: curr_x,
+                    y3: curr_y,
+                },
+                color,
+            );
 
             // Update the previous vertex to the current vertex.
             prev_x = curr_x;
@@ -661,18 +656,5 @@ impl<'a> St7789DisplayEngine<'a> {
         } else {
             self.spi_master.write_u8(ST77XX_DISPOFF, Some(false));
         }
-    }
-
-    /// Configures the address window for subsequent drawing operations.
-    fn set_address_window(&mut self, x: u16, y: u16, w: u16, h: u16) {
-        let x_draw: u32 = x as u32 + self.x_start as u32;
-        let y_draw: u32 = y as u32 + self.y_start as u32;
-        let x_address = (x_draw << 16) | (x_draw + w as u32 - 1);
-        let y_address = (y_draw << 16) | (y_draw + h as u32 - 1);
-        self.spi_master.write_u8(ST77XX_CASET, Some(false));
-        self.spi_master.write_u32(x_address, Some(true));
-        self.spi_master.write_u8(ST77XX_RASET, Some(false));
-        self.spi_master.write_u32(y_address, Some(true));
-        self.spi_master.write_u8(ST77XX_RAMWR, Some(false));
     }
 }
