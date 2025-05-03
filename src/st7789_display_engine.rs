@@ -1,11 +1,10 @@
+use core::cmp::min;
+
 use esp_hal::time::{Duration, Instant};
 
 use crate::spi_master::{FastSpiMode0, SpiPinsMaster};
 
-/// The height of the LCD in pixels.
-const LCD_HEIGHT: u16 = 240;
-/// The width of the LCD in pixels.
-const LCD_WIDTH: u16 = 135;
+use libm::{ceilf, cosf, roundf, sinf, sqrtf};
 
 /// Command to perform no operation.
 const ST77XX_NOP: u8 = 0x00;
@@ -95,6 +94,16 @@ pub const ST77XX_ORANGE: Color565 = 0xFC00;
 fn blocking_delay_ms(x: u64) {
     let delay_start = Instant::now();
     while delay_start.elapsed() < Duration::from_millis(x) {}
+}
+
+/// A primitive triangle to use
+pub struct Triangle {
+    pub x1: u16,
+    pub y1: u16,
+    pub x2: u16,
+    pub y2: u16,
+    pub x3: u16,
+    pub y3: u16,
 }
 
 /// A display engine for the ST7789 LCD controller, providing methods for initialization,
@@ -237,16 +246,344 @@ impl<'a> St7789DisplayEngine<'a> {
         self.spi_master.write_u8(madctl, Some(true));
     }
 
+    /// Helper function for rounding and clippling f32 x pixels
+    fn round_and_clip_x(&self, x: f32) -> Option<u16> {
+        let rounded = roundf(x);
+        if (rounded < 0.0) {
+            return None;
+        }
+        if rounded > self.window_width as f32 {
+            return None;
+        }
+        Some(rounded as u16)
+    }
+
+    /// Helper function for rounding and clippling f32 y pixels
+    fn round_and_clip_y(&self, y: f32) -> Option<u16> {
+        let rounded = roundf(y);
+        if rounded < 0.0 {
+            return None;
+        }
+        if rounded > self.window_height as f32 {
+            return None;
+        }
+        Some(rounded as u16)
+    }
+
     /// Fills a rectangular area on the display with a specified color.
-    pub fn fill_rectangle(&mut self, x: u16, y: u16, w: u16, h: u16, color: u16) {
+    /// x and y correspond to the top left corner
+    /// w goes left to right
+    /// h goes top to bottom
+    pub fn fill_rectangle(&mut self, x: u16, y: u16, w: u16, h: u16, color: Color565) {
         self.set_address_window(x, y, w, h);
         for _ in 0..(w * h) {
-            self.spi_master.write_u16(color, Some(true));
+            self.spi_master.write_u16(color, Some(true))
+        }
+    }
+
+    /// Fills a single pixel at x, y and checks for clipping
+    pub fn fill_pixel_with_clip_check(&mut self, x: u16, y: u16, color: Color565) {
+        if (x < self.window_width) && (y < self.window_height) {
+            self.fill_rectangle(x, y, 1, 1, color)
+        }
+    }
+
+    /// Fills a single pixel at x, y
+    pub fn fill_pixel(&mut self, x: u16, y: u16, color: Color565) {
+        self.fill_rectangle(x, y, 1, 1, color)
+    }
+
+    /// Draws a horizontal line on the display.
+    ///
+    /// # Arguments
+    ///
+    /// * `x_start` - The starting x-coordinate of the line.
+    /// * `x_end` - The ending x-coordinate of the line.
+    /// * `y` - The y-coordinate of the line.
+    /// * `color` - The color of the line in RGB565 format.
+    pub fn draw_thin_horizontal_line(&mut self, x_start: u16, x_end: u16, y: u16, color: Color565) {
+        if y < self.window_height {
+            if x_end > x_start {
+                self.fill_rectangle(x_start, y, x_end - x_start, 1, color);
+            } else {
+                self.fill_rectangle(x_end, y, x_start - x_end, 1, color);
+            }
+        }
+    }
+
+    /// Draws a vertical line on the display.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - The y-coordinate of the line.
+    /// * `y_start` - The starting y-coordinate of the line.
+    /// * `y_end` - The ending y-coordinate of the line.
+    /// * `color` - The color of the line in RGB565 format.
+    pub fn draw_thin_vertical_line(&mut self, x: u16, y_start: u16, y_end: u16, color: Color565) {
+        if x < self.window_width {
+            if y_end > y_start {
+                self.fill_rectangle(x, y_start, 1, y_end - y_start, color);
+            } else {
+                self.fill_rectangle(x, y_end, 1, y_start - y_end, color);
+            }
+        }
+    }
+
+    /// Traces a single pixel width line given the start and end points
+    pub fn trace_thin_line_start_end(
+        &mut self,
+        start_x: u16,
+        start_y: u16,
+        end_x: u16,
+        end_y: u16,
+        color: Color565,
+    ) {
+        let dx = end_x as f32 - start_x as f32;
+        let dy = end_y as f32 - start_y as f32;
+        let len = sqrtf(dx * dx + dy * dy);
+        let dy_dt = dy / len;
+        let dx_dt = dx / len;
+        for t in 0..=(ceilf(len) as u16) {
+            let px = start_x as f32 + dx_dt * (t as f32);
+            if let Some(pxr) = self.round_and_clip_x(px) {
+                let py = start_y as f32 + dy_dt * (t as f32);
+                if let Some(pyr) = self.round_and_clip_y(py) {
+                    self.fill_pixel(pxr, pyr, color)
+                }
+            }
+        }
+    }
+
+    /// Fills a thick line given the start and end points
+    pub fn trace_thick_line_start_end(
+        &mut self,
+        start_x: u16,
+        start_y: u16,
+        end_x: u16,
+        end_y: u16,
+        thickness: u16,
+        color: Color565,
+    ) {
+        let dx = end_x as f32 - start_x as f32;
+        let dy = end_y as f32 - start_y as f32;
+        let len = sqrtf(dx * dx + dy * dy);
+
+        if len == 0.0 {
+            // Draw a filled circle if start == end
+            for tx in -(thickness as i16) / 2..=thickness as i16 / 2 {
+                for ty in -(thickness as i16) / 2..=thickness as i16 / 2 {
+                    if let Some(pxr) = self.round_and_clip_x(start_x as f32 + tx as f32) {
+                        if let Some(pyr) = self.round_and_clip_y(start_y as f32 + ty as f32) {
+                            self.fill_pixel(pxr, pyr, color)
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
+        let dy_dt = dy / len;
+        let dx_dt = dx / len;
+        let perp_x = -dy_dt;
+        let perp_y = dx_dt;
+
+        let half_thick = ceilf((thickness as f32) / 2.0);
+        let oversample_rate: f32 = 1.5;
+
+        for t in 0..=(ceilf(len) as u16) {
+            let fx = start_x as f32 + dx_dt * (t as f32);
+            let fy = start_y as f32 + dy_dt * (t as f32);
+            // oversample to avoid missing pixels in gaps
+            for w in (-oversample_rate * half_thick) as i32..=(oversample_rate * half_thick) as i32
+            {
+                if let Some(pxr) = self.round_and_clip_x(fx + perp_x * (w as f32) / oversample_rate)
+                {
+                    if let Some(pyr) =
+                        self.round_and_clip_y(fy + perp_y * (w as f32) / oversample_rate)
+                    {
+                        self.fill_pixel(pxr, pyr, color)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Fills a circle starting at x, y with radius r
+    pub fn fill_circle(&mut self, x: u16, y: u16, radius: u16, color: Color565) {
+        let radius_squared = (radius as f32) * (radius as f32);
+        self.fill_pixel_with_clip_check(x, y, color);
+        for i in 0..radius {
+            for j in 0..radius {
+                let d_squared = (i * i + j * j) as f32;
+                if d_squared < radius_squared {
+                    self.fill_pixel_with_clip_check(x + i, y + j, color);
+                    let pos_x = i < x;
+                    let pos_y = j < y;
+                    if pos_x && pos_y {
+                        self.fill_pixel_with_clip_check(x - i, y - j, color);
+                    }
+                    if pos_x {
+                        self.fill_pixel_with_clip_check(x - i, y + j, color);
+                    }
+                    if pos_y {
+                        self.fill_pixel_with_clip_check(x + i, y - j, color);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Traces a circle starting at x, y with radius r
+    pub fn trace_circle(&mut self, x: u16, y: u16, radius: u16, thickness: u16, color: Color565) {
+        let radius_squared = (radius as f32) * (radius as f32);
+        let thickness_squared = (thickness as f32) * (thickness as f32);
+        for i in 0..(radius + thickness) {
+            for j in 0..(radius + thickness) {
+                let d_squared = (i * i + j * j) as f32;
+                if (d_squared - radius_squared).abs() < thickness_squared {
+                    self.fill_pixel_with_clip_check(x + i, y + j, color);
+                    let pos_x = i < x;
+                    let pos_y = j < y;
+                    if pos_x && pos_y {
+                        self.fill_pixel_with_clip_check(x - i, y - j, color);
+                    }
+                    if pos_x {
+                        self.fill_pixel_with_clip_check(x - i, y + j, color);
+                    }
+                    if pos_y {
+                        self.fill_pixel_with_clip_check(x + i, y - j, color);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Traces a triangle with thin lines
+    pub fn trace_thin_triangle(&mut self, triangle: Triangle, color: Color565) {
+        self.trace_thin_line_start_end(triangle.x1, triangle.y1, triangle.x2, triangle.y2, color);
+        self.trace_thin_line_start_end(triangle.x2, triangle.y2, triangle.x3, triangle.y3, color);
+        self.trace_thin_line_start_end(triangle.x3, triangle.y3, triangle.x1, triangle.y1, color);
+    }
+
+    /// Fills a triangle with the specified color by shading its interior.
+    ///
+    /// # Arguments
+    ///
+    /// * `triangle` - The triangle to fill, defined by its three vertices.
+    /// * `color` - The color to fill the triangle with.
+    pub fn fill_triangle(&mut self, triangle: Triangle, color: Color565) {
+        // Sort the vertices by their y-coordinates (y1 <= y2 <= y3).
+        let mut vertices = [
+            (triangle.x1, triangle.y1),
+            (triangle.x2, triangle.y2),
+            (triangle.x3, triangle.y3),
+        ];
+        vertices.sort_unstable_by(|a, b| a.1.cmp(&b.1));
+
+        let (x1, y1) = vertices[0];
+        let (x2, y2) = vertices[1];
+        let (x3, y3) = vertices[2];
+
+        // Calculate the slopes of the triangle edges.
+        let slope1 = if y2 != y1 {
+            (x2 as f32 - x1 as f32) / (y2 as f32 - y1 as f32)
+        } else {
+            0.0
+        };
+        let slope2 = if y3 != y1 {
+            (x3 as f32 - x1 as f32) / (y3 as f32 - y1 as f32)
+        } else {
+            0.0
+        };
+        let slope3 = if y3 != y2 {
+            (x3 as f32 - x2 as f32) / (y3 as f32 - y2 as f32)
+        } else {
+            0.0
+        };
+
+        // Fill the top part of the triangle (from y1 to y2).
+        let mut x_start = x1 as f32;
+        let mut x_end = x1 as f32;
+        for y in y1..=y2 {
+            self.draw_thin_horizontal_line(roundf(x_start) as u16, roundf(x_end) as u16, y, color);
+            x_start += slope1;
+            x_end += slope2;
+        }
+
+        // Fill the bottom part of the triangle (from y2 to y3).
+        x_start = x2 as f32;
+        x_end = x1 as f32 + slope2 * (y2 as f32 - y1 as f32);
+        for y in y2..=y3 {
+            self.draw_thin_horizontal_line(roundf(x_start) as u16, roundf(x_end) as u16, y, color);
+            x_start += slope3;
+            x_end += slope2;
+        }
+    }
+
+    /// Fills a regular polygon with the specified number of sides and radius.
+    ///
+    /// # Arguments
+    ///
+    /// * `center_x` - The x-coordinate of the center of the polygon.
+    /// * `center_y` - The y-coordinate of the center of the polygon.
+    /// * `radius` - The radius of the polygon.
+    /// * `sides` - The number of sides of the polygon (must be >= 3).
+    /// * `color` - The color to fill the polygon with.
+    pub fn fill_regular_polygon(
+        &mut self,
+        center_x: u16,
+        center_y: u16,
+        radius: u16,
+        rotation_deg: f32,
+        sides: u16,
+        color: Color565,
+    ) {
+        if sides < 3 {
+            return; // A polygon must have at least 3 sides.
+        }
+
+        let angle_rad = rotation_deg * core::f32::consts::PI / 180.0;
+        let angle_step = 2.0 * core::f32::consts::PI / (sides as f32);
+
+        // Iterate through each side of the polygon and draw the corresponding triangle.
+        let mut prev_x = center_x as f32 + radius as f32 * libm::cosf(angle_rad);
+        let mut prev_y = center_y as f32 + radius as f32 * libm::sinf(angle_rad);
+
+        for i in 1..=sides {
+            let angle = i as f32 * angle_step + angle_rad;
+            let curr_x = center_x as f32 + radius as f32 * libm::cosf(angle);
+            let curr_y = center_y as f32 + radius as f32 * libm::sinf(angle);
+
+            // If the triangle fits on the screen
+            if let Some(prev_x_clipped) = self.round_and_clip_x(prev_x) {
+                if let Some(prev_y_clipped) = self.round_and_clip_y(prev_y) {
+                    if let Some(curr_x_clipped) = self.round_and_clip_x(curr_x) {
+                        if let Some(curr_y_clipped) = self.round_and_clip_y(curr_y) {
+                            // Draw the triangle formed by the center, the previous vertex, and the current vertex.
+                            self.fill_triangle(
+                                Triangle {
+                                    x1: center_x,
+                                    y1: center_y,
+                                    x2: prev_x_clipped,
+                                    y2: prev_y_clipped,
+                                    x3: curr_x_clipped,
+                                    y3: curr_y_clipped,
+                                },
+                                color,
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Update the previous vertex to the current vertex.
+            prev_x = curr_x;
+            prev_y = curr_y;
         }
     }
 
     /// Fills the entire screen with a specified color.
-    pub fn fill_screen(&mut self, color: u16) {
+    pub fn fill_screen(&mut self, color: Color565) {
         self.fill_rectangle(0, 0, self.window_width, self.window_height, color);
     }
 

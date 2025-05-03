@@ -11,6 +11,7 @@ path = "./src/bin/main.rs"
 critical-section = "1.2.0"
 esp-hal = { version = "1.0.0-beta.0", features = ["esp32", "unstable"] }
 esp-println = { version = "0.13.1", features = ["esp32", "log"] }
+libm = "0.2"
 
 [profile.dev]
 # Rust debug is too slow.
