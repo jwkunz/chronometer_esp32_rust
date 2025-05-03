@@ -271,9 +271,14 @@ impl<'a> St7789DisplayEngine<'a> {
     }
 
     /// Fills a rectangular area on the display with a specified color.
-    /// x and y correspond to the top left corner
-    /// w goes left to right
-    /// h goes top to bottom
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - The x-coordinate of the top-left corner of the rectangle.
+    /// * `y` - The y-coordinate of the top-left corner of the rectangle.
+    /// * `w` - The width of the rectangle in pixels (extends to the right).
+    /// * `h` - The height of the rectangle in pixels (extends downward).
+    /// * `color` - The color to fill the rectangle with, in RGB565 format.
     pub fn fill_rectangle(&mut self, x: u16, y: u16, w: u16, h: u16, color: Color565) {
         self.set_address_window(x, y, w, h);
         for _ in 0..(w * h) {
@@ -281,19 +286,42 @@ impl<'a> St7789DisplayEngine<'a> {
         }
     }
 
-    /// Fills a single pixel at x, y and checks for clipping
+    /// Fills a single pixel at the specified coordinates with clipping checks.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - The x-coordinate of the pixel.
+    /// * `y` - The y-coordinate of the pixel.
+    /// * `color` - The color to fill the pixel with, in RGB565 format.
+    ///
+    /// # Description
+    ///
+    /// This function ensures that the pixel coordinates are within the display's boundaries
+    /// before attempting to draw the pixel.
     pub fn fill_pixel_with_clip_check(&mut self, x: u16, y: u16, color: Color565) {
         if (x < self.window_width) && (y < self.window_height) {
             self.fill_rectangle(x, y, 1, 1, color)
         }
     }
 
-    /// Fills a single pixel at x, y
+    /// Fills a single pixel at the specified coordinates without clipping checks.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - The x-coordinate of the pixel.
+    /// * `y` - The y-coordinate of the pixel.
+    /// * `color` - The color to fill the pixel with, in RGB565 format.
+    ///
+    /// # Description
+    ///
+    /// This function directly fills the pixel without verifying if the coordinates
+    /// are within the display's boundaries. Use this function only when you are certain
+    /// the coordinates are valid.
     pub fn fill_pixel(&mut self, x: u16, y: u16, color: Color565) {
         self.fill_rectangle(x, y, 1, 1, color)
     }
 
-    /// Draws a horizontal line on the display.
+    /// Draws a horizontal line on the display with a thickness of 1 pixel.
     ///
     /// # Arguments
     ///
@@ -301,6 +329,11 @@ impl<'a> St7789DisplayEngine<'a> {
     /// * `x_end` - The ending x-coordinate of the line.
     /// * `y` - The y-coordinate of the line.
     /// * `color` - The color of the line in RGB565 format.
+    ///
+    /// # Description
+    ///
+    /// This function draws a horizontal line by filling a 1-pixel-high rectangle
+    /// between the specified start and end x-coordinates.
     pub fn draw_thin_horizontal_line(&mut self, x_start: u16, x_end: u16, y: u16, color: Color565) {
         if y < self.window_height {
             if x_end > x_start {
@@ -311,14 +344,19 @@ impl<'a> St7789DisplayEngine<'a> {
         }
     }
 
-    /// Draws a vertical line on the display.
+    /// Draws a vertical line on the display with a thickness of 1 pixel.
     ///
     /// # Arguments
     ///
-    /// * `x` - The y-coordinate of the line.
+    /// * `x` - The x-coordinate of the line.
     /// * `y_start` - The starting y-coordinate of the line.
     /// * `y_end` - The ending y-coordinate of the line.
     /// * `color` - The color of the line in RGB565 format.
+    ///
+    /// # Description
+    ///
+    /// This function draws a vertical line by filling a 1-pixel-wide rectangle
+    /// between the specified start and end y-coordinates.
     pub fn draw_thin_vertical_line(&mut self, x: u16, y_start: u16, y_end: u16, color: Color565) {
         if x < self.window_width {
             if y_end > y_start {
@@ -329,7 +367,21 @@ impl<'a> St7789DisplayEngine<'a> {
         }
     }
 
-    /// Traces a single pixel width line given the start and end points
+    /// Traces a single-pixel-width line between two points.
+    ///
+    /// # Arguments
+    ///
+    /// * `start_x` - The x-coordinate of the starting point.
+    /// * `start_y` - The y-coordinate of the starting point.
+    /// * `end_x` - The x-coordinate of the ending point.
+    /// * `end_y` - The y-coordinate of the ending point.
+    /// * `color` - The color of the line in RGB565 format.
+    ///
+    /// # Description
+    ///
+    /// This function uses Bresenham's line algorithm to trace a thin line between
+    /// the specified start and end points. It ensures that the line is clipped
+    /// to the display's boundaries.
     pub fn trace_thin_line_start_end(
         &mut self,
         start_x: u16,
@@ -354,7 +406,22 @@ impl<'a> St7789DisplayEngine<'a> {
         }
     }
 
-    /// Fills a thick line given the start and end points
+    /// Fills a thick line between two points with the specified thickness.
+    ///
+    /// # Arguments
+    ///
+    /// * `start_x` - The x-coordinate of the starting point.
+    /// * `start_y` - The y-coordinate of the starting point.
+    /// * `end_x` - The x-coordinate of the ending point.
+    /// * `end_y` - The y-coordinate of the ending point.
+    /// * `thickness` - The thickness of the line in pixels.
+    /// * `color` - The color of the line in RGB565 format.
+    ///
+    /// # Description
+    ///
+    /// This function draws a thick line by oversampling and filling pixels
+    /// perpendicular to the line's direction. It ensures that the line is clipped
+    /// to the display's boundaries.
     pub fn trace_thick_line_start_end(
         &mut self,
         start_x: u16,
@@ -393,7 +460,7 @@ impl<'a> St7789DisplayEngine<'a> {
         for t in 0..=(ceilf(len) as u16) {
             let fx = start_x as f32 + dx_dt * (t as f32);
             let fy = start_y as f32 + dy_dt * (t as f32);
-            // oversample to avoid missing pixels in gaps
+            // Oversample to avoid missing pixels in gaps
             for w in (-oversample_rate * half_thick) as i32..=(oversample_rate * half_thick) as i32
             {
                 if let Some(pxr) = self.round_and_clip_x(fx + perp_x * (w as f32) / oversample_rate)
