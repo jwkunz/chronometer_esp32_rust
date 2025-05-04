@@ -2,7 +2,10 @@ use core::{cmp::min, f32::consts::PI};
 
 use esp_hal::time::{Duration, Instant};
 
-use crate::spi_master::{FastSpiMode0, SpiPinsMaster};
+use crate::{
+    font_63_dots_scalable::Glyph,
+    spi_master::{FastSpiMode0, SpiPinsMaster},
+};
 
 use libm::{ceilf, cosf, floorf, roundf, sinf, sqrtf};
 
@@ -647,6 +650,14 @@ impl<'a> St7789DisplayEngine<'a> {
     /// Fills the entire screen with a specified color.
     pub fn fill_screen(&mut self, color: Color565) {
         self.fill_rectangle(0, 0, self.window_width, self.window_height, color);
+    }
+
+    /// Draws a glyph
+    pub fn draw_glyph(&mut self, glyph: Glyph, color: Color565) {
+        let dots = glyph.get_dot_coordinates_array();
+        for (px, py) in dots.into_iter().flatten() {
+            self.fill_circle(px, py, glyph.get_dot_radius(), color);
+        }
     }
 
     /// Enables or disables the display.
