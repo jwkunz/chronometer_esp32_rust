@@ -5,7 +5,7 @@ use esp_hal::{
 };
 
 use crate::{
-    font_63_dots_scalable::Glyph,
+    font_64_bitmap_scalable::Glyph,
     spi_master::SpiPinsMaster,
     st7789_display_engine::{St7789DisplayEngine, Triangle, ST77XX_BLACK, ST77XX_GREEN},
 };
@@ -134,11 +134,7 @@ pub fn tb_st7789_display_engine(peripherals: Peripherals) -> ! {
         */
         //screen.fill_regular_polygon(80.0, 100.0, 25.0, 15.0, 6, color);
 
-        let mut g = Glyph::from('b');
-        g.set_base_position(25.0, 25.0);
-        g.set_scale(2.0);
-        g.set_rotation_deg(0.0);
-        screen.draw_glyph(g, color);
+        screen.draw_str("0123456789\n +-*/.:", 50.0, 3.0, 3.0, 90.0, color);
 
         /*
         // Fill the screen with the generated color.

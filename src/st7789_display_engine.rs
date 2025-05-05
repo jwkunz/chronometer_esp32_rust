@@ -3,7 +3,7 @@ use core::{cmp::min, f32::consts::PI};
 use esp_hal::time::{Duration, Instant};
 
 use crate::{
-    font_63_dots_scalable::Glyph,
+    font_64_bitmap_scalable::Glyph,
     spi_master::{FastSpiMode0, SpiPinsMaster},
 };
 
@@ -72,8 +72,7 @@ const ST77XX_RDID1: u8 = 0xDA;
 const ST77XX_RDID2: u8 = 0xDB;
 /// Command to read ID3.
 const ST77XX_RDID3: u8 = 0xDC;
-/// Command to read ID4.
-const ST77XX_RDID4: u8 = 0xDD;
+/// Command to read ID4: u8 = 0xDD;
 
 /// Type alias for 16-bit color values in RGB565 format.
 pub type Color565 = u16;
@@ -136,6 +135,41 @@ pub struct St7789DisplayEngine<'a> {
     set_height: u16,
 }
 
+/// The `St7789DisplayEngine` struct provides an interface for controlling
+/// an ST7789 display. It includes methods for initialization, drawing shapes,
+/// filling areas, and managing display settings.
+///
+/// # Methods
+///
+/// - `new`: Creates a new instance of the display engine.
+/// - `display_initialization_sequence`: Sends the initialization sequence to the display.
+/// - `set_rotation`: Sets the display rotation based on a given mode.
+/// - `set_address_window`: Configures the address window for drawing operations.
+/// - `round_and_clip_x`: Rounds and clips an x-coordinate to the display boundaries.
+/// - `round_and_clip_y`: Rounds and clips a y-coordinate to the display boundaries.
+/// - `fill_rectangle`: Fills a rectangular area with a specified color.
+/// - `fill_pixel`: Fills a single pixel without boundary checks.
+/// - `fill_pixel_after_rounding_and_clipping`: Fills a single pixel with boundary checks.
+/// - `draw_thin_horizontal_line`: Draws a horizontal line with a thickness of 1 pixel.
+/// - `draw_thin_vertical_line`: Draws a vertical line with a thickness of 1 pixel.
+/// - `trace_thin_line_start_end`: Draws a thin line between two points using Bresenham's algorithm.
+/// - `trace_thick_line_start_end`: Draws a thick line between two points with a specified thickness.
+/// - `fill_circle`: Fills a circle with a specified radius and color.
+/// - `fill_thick_ring`: Draws a thick ring (hollow circle) with a specified thickness.
+/// - `trace_thin_triangle`: Draws the outline of a triangle.
+/// - `fill_triangle`: Fills a triangle with a specified color.
+/// - `fill_regular_polygon`: Fills a regular polygon with a specified number of sides and radius.
+/// - `fill_screen`: Fills the entire screen with a specified color.
+/// - `draw_glyph`: Draws a single glyph on the display.
+/// - `draw_str`: Draws a string slice using a scalable bitmap font.
+/// - `enable_display`: Enables or disables the display.
+///
+/// # Description
+///
+/// This struct is designed to work with the ST7789 display controller and provides
+/// a variety of methods for graphical operations. It supports basic shapes, text rendering,
+/// and advanced features like rotation and clipping. The implementation ensures efficient
+/// communication with the display using SPI.
 impl<'a> St7789DisplayEngine<'a> {
     /// Creates a new `St7789DisplayEngine` instance.
     ///
@@ -652,11 +686,67 @@ impl<'a> St7789DisplayEngine<'a> {
         self.fill_rectangle(0, 0, self.window_width, self.window_height, color);
     }
 
-    /// Draws a glyph
-    pub fn draw_glyph(&mut self, glyph: Glyph, color: Color565) {
+    /// Draws a glyph on the display.
+    ///
+    /// # Arguments
+    ///
+    /// * `glyph` - The `Glyph` object containing the dot coordinates and scaling information.
+    /// * `color` - The color to draw the glyph with, in RGB565 format.
+    ///
+    /// # Description
+    ///
+    /// This function retrieves the dot coordinates of the glyph using `get_dot_coordinates_array`.
+    /// For each dot, it calculates the scaled size and fills a rectangle at the corresponding
+    /// position on the display.
+    fn draw_glyph(&mut self, glyph: Glyph, color: Color565) {
         let dots = glyph.get_dot_coordinates_array();
         for (px, py) in dots.into_iter().flatten() {
-            self.fill_circle(px, py, glyph.get_dot_radius(), color);
+            let w = roundf(glyph.get_scale()) as u16;
+            self.fill_rectangle(roundf(px) as u16, roundf(py) as u16, w, w, color);
+        }
+    }
+
+    /// Draws a string slice on the display using the 64 bitmap scalable font.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - The string slice to draw.
+    /// * `base_x` - The x-coordinate of the base position for the text.
+    /// * `base_y` - The y-coordinate of the base position for the text.
+    /// * `scale` - The scaling factor for the text.
+    /// * `rotation_cw_deg` - The clockwise rotation angle in degrees for the text.
+    /// * `color` - The color to draw the text with, in RGB565 format.
+    ///
+    /// # Description
+    ///
+    /// This function iterates over the characters in the string slice and draws each character
+    /// as a glyph. It handles newlines by resetting the x-coordinate and incrementing the y-coordinate.
+    /// Each glyph is positioned and scaled based on the provided base position, scale, and rotation.
+    pub fn draw_str(
+        &mut self,
+        text: &str,
+        base_x: f32,
+        base_y: f32,
+        scale: f32,
+        rotation_cw_deg: f32,
+        color: Color565,
+    ) {
+        let mut glyph = Glyph::default();
+        glyph.set_base_position(base_x, base_y);
+        glyph.set_scale(scale);
+        glyph.set_rotation_cw_deg(rotation_cw_deg);
+        let mut char_position_x: i16 = 0;
+        let mut char_position_y: i16 = 0;
+        for c in text.chars() {
+            if c == '\n' {
+                char_position_x = 0;
+                char_position_y += 1;
+            } else {
+                glyph.set_bitfield(c);
+                glyph.set_char_position(char_position_x, char_position_y);
+                self.draw_glyph(glyph.clone(), color);
+                char_position_x += 1;
+            }
         }
     }
 
