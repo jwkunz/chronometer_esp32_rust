@@ -134,7 +134,7 @@ pub fn tb_st7789_display_engine(peripherals: Peripherals) -> ! {
         */
         //screen.fill_regular_polygon(80.0, 100.0, 25.0, 15.0, 6, color);
 
-        screen.draw_str("0123456789\n +-*/.:", 50.0, 3.0, 3.0, 90.0, color);
+        screen.draw_str("Jakob Kunzler", 50.0, 5.0, 2.0, 90.0, color);
 
         /*
         // Fill the screen with the generated color.
