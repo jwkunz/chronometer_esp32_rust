@@ -225,6 +225,14 @@ impl<'a> St7789DisplayEngine<'a> {
         }
     }
 
+    /// Access to screen size
+    pub fn get_window_width(&self) -> u16 {
+        self.window_width
+    }
+    pub fn get_window_height(&self) -> u16 {
+        self.window_height
+    }
+
     /// Sends the initialization sequence to the ST7789 controller.
     pub fn display_initialization_sequence(&mut self) {
         self.spi_master.write_u8(ST77XX_SWRESET, Some(false));

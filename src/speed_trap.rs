@@ -1,6 +1,8 @@
 use esp_hal::gpio::Input;
 use esp_hal::time::{Duration, Instant};
 
+use crate::st7789_display_engine::{St7789DisplayEngine, ST77XX_GREEN};
+
 /// Represents the various states of the speed trap.
 enum TrapState {
     /// The speed trap is idle and waiting for an event.
@@ -52,6 +54,8 @@ pub struct SpeedTrap<'a> {
     state: TrapState,
     /// The format in which the speed should be reported.
     report_format: SpeedUnits,
+    /// Screen driver
+    screen_driver: &'a mut St7789DisplayEngine<'a>,
 }
 
 impl<'a> SpeedTrap<'a> {
@@ -72,6 +76,7 @@ impl<'a> SpeedTrap<'a> {
         input_start: Input<'a>,
         input_stop: Input<'a>,
         report_format: SpeedUnits,
+        screen_driver: &'a mut St7789DisplayEngine<'a>,
     ) -> SpeedTrap<'a> {
         let now = Instant::now();
         SpeedTrap {
@@ -82,6 +87,7 @@ impl<'a> SpeedTrap<'a> {
             input_stop,
             state: TrapState::Idle,
             report_format,
+            screen_driver,
         }
     }
 
@@ -126,14 +132,135 @@ impl<'a> SpeedTrap<'a> {
         }
     }
 
+    /// Appends a unit string (e.g., "mm/s") to the buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` - The mutable buffer to append to.
+    /// * `index` - The current index in the buffer.
+    /// * `unit` - The unit string to append (e.g., "mm/s").
+    ///
+    /// # Returns
+    ///
+    /// The updated index after appending the unit string.
+    fn append_unit_to_buffer(buffer: &mut [u8], mut index: usize, unit: &[u8]) -> usize {
+        for &byte in unit {
+            if index < buffer.len() {
+                buffer[index] = byte;
+                index += 1;
+            }
+        }
+        index
+    }
+
+    /// Writes the result to the display.
+    ///
+    /// # Arguments
+    ///
+    /// * `speed` - The calculated speed to display.
+    ///
+    /// # Description
+    ///
+    /// This function formats the speed value and displays it on the screen using the screen driver.
+    fn write_result_to_screen(&mut self, speed: f32) {
+        // Create a fixed-size buffer for the string
+        let mut buffer = [0u8; 32]; // 32 bytes for the string
+        let mut index = 0;
+
+        // Write "Speed: " into the buffer
+        for &byte in b"Speed: ".iter() {
+            if index < buffer.len() {
+                buffer[index] = byte;
+                index += 1;
+            }
+        }
+
+        // Convert the speed to an integer part and fractional part
+        let integer_part = speed as u32;
+        let fractional_part = ((speed - integer_part as f32) * 100.0) as u32;
+
+        // Write the integer part into the buffer
+        let mut temp = integer_part;
+        let mut digits = [0u8; 10]; // Temporary buffer for digits
+        let mut digit_count = 0;
+        while temp > 0 {
+            digits[digit_count] = b'0' + (temp % 10) as u8;
+            temp /= 10;
+            digit_count += 1;
+        }
+        if digit_count == 0 {
+            digits[digit_count] = b'0';
+            digit_count += 1;
+        }
+        for i in (0..digit_count).rev() {
+            if index < buffer.len() {
+                buffer[index] = digits[i];
+                index += 1;
+            }
+        }
+
+        // Add the decimal point
+        if index < buffer.len() {
+            buffer[index] = b'.';
+            index += 1;
+        }
+
+        // Write the fractional part into the buffer
+        let mut temp = fractional_part;
+        let mut digits = [0u8; 10]; // Temporary buffer for digits
+        let mut digit_count = 0;
+        while temp > 0 {
+            digits[digit_count] = b'0' + (temp % 10) as u8;
+            temp /= 10;
+            digit_count += 1;
+        }
+        if digit_count == 0 {
+            digits[digit_count] = b'0';
+            digit_count += 1;
+        }
+        for i in (0..digit_count).rev() {
+            if index < buffer.len() {
+                buffer[index] = digits[i];
+                index += 1;
+            }
+        }
+
+        // Append the unit string based on the report format
+        index = match self.report_format {
+            SpeedUnits::MillimetersPerSecond => {
+                Self::append_unit_to_buffer(&mut buffer, index, b" mm/s")
+            }
+            SpeedUnits::MetersPerSecond => Self::append_unit_to_buffer(&mut buffer, index, b" m/s"),
+            SpeedUnits::KilometersPerHour => {
+                Self::append_unit_to_buffer(&mut buffer, index, b" km/h")
+            }
+            SpeedUnits::FeetPerSecond => Self::append_unit_to_buffer(&mut buffer, index, b" ft/s"),
+            SpeedUnits::MilesPerHour => Self::append_unit_to_buffer(&mut buffer, index, b" mph"),
+        };
+
+        // Convert the buffer to a string slice
+        let speed_str = core::str::from_utf8(&buffer[..index]).unwrap_or("Error");
+
+        // Use the string (e.g., display it on the screen)
+        self.screen_driver.draw_str(
+            speed_str,
+            self.screen_driver.get_window_width() as f32 * 0.5,
+            10.0,
+            1.7,
+            90.0,
+            ST77XX_GREEN,
+        );
+    }
+
     /// Updates the state of the speed trap based on the sensor inputs.
     ///
     /// This function should be called periodically to process the sensor inputs and
     /// transition the state machine. When the speed trap reaches the `Report` state,
-    /// it calculates and prints the speed, then resets to the `Idle` state.
+    /// it calculates and displays the speed, then resets to the `Idle` state.
     pub fn tick(&mut self) {
         match self.state {
             TrapState::Idle => {
+                // Write the result to the display
                 if self.input_start.is_low() {
                     self.start_clock();
                     self.state = TrapState::LowStart
@@ -161,7 +288,12 @@ impl<'a> SpeedTrap<'a> {
                 }
             }
             TrapState::Report => {
-                esp_println::println!("Speed: {}", self.get_speed(self.report_format));
+                // Calculate the speed
+                let speed = self.get_speed(self.report_format) as f32;
+
+                // Write the result to the display
+                self.write_result_to_screen(speed);
+
                 self.state = TrapState::Idle
             }
         }
