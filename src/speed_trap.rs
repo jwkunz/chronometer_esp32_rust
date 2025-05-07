@@ -1,7 +1,7 @@
 use esp_hal::gpio::Input;
 use esp_hal::time::{Duration, Instant};
 
-use crate::st7789_display_engine::{St7789DisplayEngine, ST77XX_GREEN};
+use crate::st7789_display_engine::{St7789DisplayEngine, ST77XX_BLACK, ST77XX_GREEN};
 
 /// Represents the various states of the speed trap.
 enum TrapState {
@@ -168,7 +168,7 @@ impl<'a> SpeedTrap<'a> {
         let mut index = 0;
 
         // Write "Speed: " into the buffer
-        for &byte in b"Speed: ".iter() {
+        for &byte in b"   SPEED\n\n".iter() {
             if index < buffer.len() {
                 buffer[index] = byte;
                 index += 1;
@@ -241,15 +241,12 @@ impl<'a> SpeedTrap<'a> {
         // Convert the buffer to a string slice
         let speed_str = core::str::from_utf8(&buffer[..index]).unwrap_or("Error");
 
+        // Clear the screen
+        self.screen_driver.fill_screen(ST77XX_BLACK);
+
         // Use the string (e.g., display it on the screen)
-        self.screen_driver.draw_str(
-            speed_str,
-            self.screen_driver.get_window_width() as f32 * 0.5,
-            10.0,
-            1.7,
-            90.0,
-            ST77XX_GREEN,
-        );
+        self.screen_driver
+            .draw_str(speed_str, 100.0, 10.0, 2.7, 90.0, ST77XX_GREEN);
     }
 
     /// Updates the state of the speed trap based on the sensor inputs.
