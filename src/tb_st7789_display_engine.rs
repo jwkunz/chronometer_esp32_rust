@@ -115,30 +115,8 @@ pub fn tb_st7789_display_engine(peripherals: Peripherals) -> ! {
         // Update the color using the LFSR.
         lfsr_16(&mut color);
 
-        //screen.trace_thin_line_start_end(10.0, 10.0, 100.0, 100.0, color);
-        //screen.trace_thick_line_start_end(-30.0, 30.0, 50.0, 200.0, 20.0, color);
-        //screen.fill_circle(150.0, 100.0, 50.0, color);
-        //screen.fill_thick_ring(100.0, 100.0, 50.0, 10.0, color);
-        /*
-        screen.fill_triangle(
-            Triangle {
-                x1: 10.0,
-                y1: 10.0,
-                x2: 80.0,
-                y2: 230.0,
-                x3: 100.0,
-                y3: 50.0,
-            },
-            color,
-        );
-        */
-        //screen.fill_regular_polygon(80.0, 100.0, 25.0, 15.0, 6, color);
-
-        screen.draw_str("Jakob Kunzler", 50.0, 5.0, 2.0, 90.0, color);
-
-        /*
         // Fill the screen with the generated color.
-        if color % 3 == 0 {
+        if color % 6 == 0 {
             screen.fill_regular_polygon(
                 (color % lcd_width) as f32,
                 (color % lcd_height) as f32,
@@ -148,7 +126,7 @@ pub fn tb_st7789_display_engine(peripherals: Peripherals) -> ! {
                 color,
             );
         }
-        if color % 3 == 1 {
+        if color % 6 == 1 {
             screen.fill_circle(
                 (color % lcd_width) as f32,
                 (color % lcd_height) as f32,
@@ -156,7 +134,7 @@ pub fn tb_st7789_display_engine(peripherals: Peripherals) -> ! {
                 color,
             );
         }
-        if color % 3 == 2 {
+        if color % 6 == 2 {
             screen.fill_rectangle(
                 color % lcd_width,
                 color % lcd_height,
@@ -165,7 +143,38 @@ pub fn tb_st7789_display_engine(peripherals: Peripherals) -> ! {
                 color,
             );
         }
-        */
+        if color % 6 == 3 {
+            screen.draw_str(
+                "ABCDEFGHI!@#$%\nJKLMNOPQR^&*()\nSTUVWXYZ-_+= \nabcdefghi{}[]\\\njklmnopqr\";:\'\nstuvwxyz<>,.?/\n|0123456789",
+                125.0,
+                5.0,
+                2.0,
+                90.0,
+                color,
+            );
+        }
+        if color % 6 == 4 {
+            screen.fill_triangle(
+                Triangle {
+                    x1: (color % lcd_width) as f32,
+                    y1: (color % lcd_height) as f32,
+                    x2: (color % lcd_width) as f32,
+                    y2: (color % lcd_height) as f32,
+                    x3: (color % lcd_width) as f32,
+                    y3: (color % lcd_height) as f32,
+                },
+                color,
+            );
+        }
+        if color % 6 == 5 {
+            screen.fill_thick_ring(
+                (color % lcd_width) as f32,
+                (color % lcd_height) as f32,
+                (color % SHAPE_SIZE) as f32,
+                (color % 2) as f32,
+                color,
+            );
+        }
 
         if (loop_counter % avg_count == 0) {
             // Print the render time for the current frame.
