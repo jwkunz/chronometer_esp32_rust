@@ -6,7 +6,7 @@ use esp_hal::{
 use crate::{
     speed_trap::{SpeedTrap, SpeedUnits},
     spi_master::SpiPinsMaster,
-    st7789_display_engine::{St7789DisplayEngine, ST77XX_BLACK},
+    st7789_display_engine::{Color565, St7789DisplayEngine, ST77XX_BLACK},
 };
 
 pub fn start_chronometer(peripherals: Peripherals) -> ! {
@@ -69,9 +69,11 @@ pub fn start_chronometer(peripherals: Peripherals) -> ! {
     // Set the display rotation to mode 2.
     screen.set_rotation(2);
 
-    screen.fill_screen(ST77XX_BLACK);
+    const BACKGROUND: Color565 = ST77XX_BLACK;
+    screen.fill_screen(BACKGROUND);
+    const SEPARATION_MM: f64 = 8.0;
     let mut speed_trap_1 = SpeedTrap::from(
-        8.0,
+        SEPARATION_MM,
         diode_a,
         diode_b,
         SpeedUnits::FeetPerSecond,

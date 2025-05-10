@@ -1,5 +1,8 @@
+use core::cmp::min;
+
 use esp_hal::gpio::Input;
 use esp_hal::time::{Duration, Instant};
+use libm::fabsf;
 
 use crate::st7789_display_engine::{St7789DisplayEngine, ST77XX_BLACK, ST77XX_GREEN};
 
@@ -54,6 +57,10 @@ pub struct SpeedTrap<'a> {
     report_format: SpeedUnits,
     /// Screen driver
     screen_driver: &'a mut St7789DisplayEngine<'a>,
+    /// Buffer
+    speed_0: f64,
+    speed_1: f64,
+    speed_2: f64,
 }
 
 impl<'a> SpeedTrap<'a> {
@@ -86,6 +93,9 @@ impl<'a> SpeedTrap<'a> {
             state: TrapState::Idle,
             report_format,
             screen_driver,
+            speed_0: 0.0,
+            speed_1: 0.0,
+            speed_2: 0.0,
         }
     }
 
@@ -130,19 +140,84 @@ impl<'a> SpeedTrap<'a> {
         }
     }
 
-    /// Appends a unit string (e.g., "mm/s") to the buffer.
+    /// Updates the log
+    fn update_buffer(&mut self, new_speed: f64) {
+        self.speed_2 = self.speed_1;
+        self.speed_1 = self.speed_0;
+        self.speed_0 = new_speed;
+    }
+
+    /// Gets the average from the log
+    fn compute_average(&self) -> f64 {
+        (self.speed_0 + self.speed_1 + self.speed_2) / 3.0
+    }
+
+    /// Gets the span from the log
+    fn compute_span(&self) -> f64 {
+        let a = (self.speed_0 - self.speed_1).abs();
+        let b = (self.speed_1 - self.speed_2).abs();
+        let c = (self.speed_2 - self.speed_0).abs();
+        let d = f64::min(a, b);
+        f64::min(d, c)
+    }
+
+    /// Appends a formatted speed value to the buffer.
     ///
     /// # Arguments
     ///
     /// * `buffer` - The mutable buffer to append to.
     /// * `index` - The current index in the buffer.
+    /// * `speed` - The speed value to format and append.
     /// * `unit` - The unit string to append (e.g., "mm/s").
     ///
     /// # Returns
     ///
-    /// The updated index after appending the unit string.
-    fn append_unit_to_buffer(buffer: &mut [u8], mut index: usize, unit: &[u8]) -> usize {
-        for &byte in unit {
+    /// The updated index after appending the formatted speed.
+    fn append_speed_to_buffer(buffer: &mut [u8], mut index: usize, speed: f64) -> usize {
+        // Convert the speed to an integer part and fractional part
+        let integer_part = speed as u32;
+        let fractional_part = libm::round((speed - integer_part as f64) * 1000.0) as u32; // 3 decimal places
+
+        // Write the integer part into the buffer (always 4 spaces)
+        let mut temp = integer_part;
+        let mut digits = [b' '; 4]; // Fixed buffer for 4 spaces
+        let mut digit_count = 0;
+        while temp > 0 {
+            digits[3 - digit_count] = b'0' + (temp % 10) as u8;
+            temp /= 10;
+            digit_count += 1;
+        }
+        for &digit in &digits {
+            if index < buffer.len() {
+                buffer[index] = digit;
+                index += 1;
+            }
+        }
+
+        // Add the decimal point
+        if index < buffer.len() {
+            buffer[index] = b'.';
+            index += 1;
+        }
+
+        // Write the fractional part into the buffer (always 3 digits)
+        let mut temp = fractional_part;
+        let mut digits = [b'0'; 3]; // Fixed buffer for 3 digits
+        for i in (0..3).rev() {
+            digits[i] = b'0' + (temp % 10) as u8;
+            temp /= 10;
+        }
+        for &digit in &digits {
+            if index < buffer.len() {
+                buffer[index] = digit;
+                index += 1;
+            }
+        }
+        index
+    }
+
+    fn append_text_to_buffer(buffer: &mut [u8], mut index: usize, text: &[u8]) -> usize {
+        for &byte in text {
             if index < buffer.len() {
                 buffer[index] = byte;
                 index += 1;
@@ -160,81 +235,55 @@ impl<'a> SpeedTrap<'a> {
     /// # Description
     ///
     /// This function formats the speed value and displays it on the screen using the screen driver.
-    fn write_result_to_screen(&mut self, speed: f32) {
+    fn write_results_to_screen(&mut self) {
         // Create a fixed-size buffer for the string
-        let mut buffer = [0u8; 32]; // 32 bytes for the string
+        let mut buffer = [0u8; 128]; // 128 bytes for the string
         let mut index = 0;
 
-        // Write "Speed: " into the buffer
-        for &byte in b"   SPEED\n\n".iter() {
-            if index < buffer.len() {
-                buffer[index] = byte;
-                index += 1;
-            }
-        }
+        // Add a label
+        index = Self::append_text_to_buffer(&mut buffer, index, b"|LOG0| ");
 
-        // Convert the speed to an integer part and fractional part
-        let integer_part = speed as u32;
-        let fractional_part = ((speed - integer_part as f32) * 100.0) as u32;
+        // Append speed_0 to the buffer
+        index = Self::append_speed_to_buffer(&mut buffer, index, self.speed_0);
 
-        // Write the integer part into the buffer
-        let mut temp = integer_part;
-        let mut digits = [0u8; 10]; // Temporary buffer for digits
-        let mut digit_count = 0;
-        while temp > 0 {
-            digits[digit_count] = b'0' + (temp % 10) as u8;
-            temp /= 10;
-            digit_count += 1;
-        }
-        if digit_count == 0 {
-            digits[digit_count] = b'0';
-            digit_count += 1;
-        }
-        for i in (0..digit_count).rev() {
-            if index < buffer.len() {
-                buffer[index] = digits[i];
-                index += 1;
-            }
-        }
+        // Add a label
+        index = Self::append_text_to_buffer(&mut buffer, index, b"\n|LOG1| ");
 
-        // Add the decimal point
-        if index < buffer.len() {
-            buffer[index] = b'.';
-            index += 1;
-        }
+        // Append speed_1 to the buffer
+        index = Self::append_speed_to_buffer(&mut buffer, index, self.speed_1);
 
-        // Write the fractional part into the buffer
-        let mut temp = fractional_part;
-        let mut digits = [0u8; 10]; // Temporary buffer for digits
-        let mut digit_count = 0;
-        while temp > 0 {
-            digits[digit_count] = b'0' + (temp % 10) as u8;
-            temp /= 10;
-            digit_count += 1;
-        }
-        if digit_count == 0 {
-            digits[digit_count] = b'0';
-            digit_count += 1;
-        }
-        for i in (0..digit_count).rev() {
-            if index < buffer.len() {
-                buffer[index] = digits[i];
-                index += 1;
-            }
-        }
+        // Add a label
+        index = Self::append_text_to_buffer(&mut buffer, index, b"\n|LOG2| ");
 
-        // Append the unit string based on the report format
-        index = match self.report_format {
-            SpeedUnits::MillimetersPerSecond => {
-                Self::append_unit_to_buffer(&mut buffer, index, b" mm/s")
-            }
-            SpeedUnits::MetersPerSecond => Self::append_unit_to_buffer(&mut buffer, index, b" m/s"),
-            SpeedUnits::KilometersPerHour => {
-                Self::append_unit_to_buffer(&mut buffer, index, b" km/h")
-            }
-            SpeedUnits::FeetPerSecond => Self::append_unit_to_buffer(&mut buffer, index, b" ft/s"),
-            SpeedUnits::MilesPerHour => Self::append_unit_to_buffer(&mut buffer, index, b" mph"),
+        // Append speed_2 to the buffer
+        index = Self::append_speed_to_buffer(&mut buffer, index, self.speed_2);
+
+        // Add a label
+        index = Self::append_text_to_buffer(&mut buffer, index, b"\n\n|MEAN| ");
+
+        // Append the average speed to the buffer
+        let average = self.compute_average();
+        index = Self::append_speed_to_buffer(&mut buffer, index, average);
+
+        // Add a label
+        index = Self::append_text_to_buffer(&mut buffer, index, b"\n|SPAN| ");
+
+        // Append the span to the buffer
+        let span = self.compute_span();
+        index = Self::append_speed_to_buffer(&mut buffer, index, span);
+
+        // Add a label
+        index = Self::append_text_to_buffer(&mut buffer, index, b"\n|UNIT|   ");
+
+        // Determine the unit string based on the report format
+        let unit = match self.report_format {
+            SpeedUnits::MillimetersPerSecond => b" mm/s",
+            SpeedUnits::MetersPerSecond => b" m/s ",
+            SpeedUnits::KilometersPerHour => b" km/h",
+            SpeedUnits::FeetPerSecond => b" ft/s",
+            SpeedUnits::MilesPerHour => b" mph ",
         };
+        index = Self::append_text_to_buffer(&mut buffer, index, unit);
 
         // Convert the buffer to a string slice
         let speed_str = core::str::from_utf8(&buffer[..index]).unwrap_or("Error");
@@ -244,7 +293,7 @@ impl<'a> SpeedTrap<'a> {
 
         // Use the string (e.g., display it on the screen)
         self.screen_driver
-            .draw_str(speed_str, 100.0, 10.0, 2.7, 90.0, ST77XX_GREEN);
+            .draw_str(speed_str, 125.0, 0.0, 2.0, 90.0, ST77XX_GREEN);
     }
 
     /// Updates the state of the speed trap based on the sensor inputs.
@@ -278,10 +327,11 @@ impl<'a> SpeedTrap<'a> {
             }
             TrapState::Report => {
                 // Calculate the speed
-                let speed = self.get_speed(self.report_format) as f32;
+                let speed = self.get_speed(self.report_format);
+                self.update_buffer(speed);
 
                 // Write the result to the display
-                self.write_result_to_screen(speed);
+                self.write_results_to_screen();
 
                 self.state = TrapState::Idle
             }
