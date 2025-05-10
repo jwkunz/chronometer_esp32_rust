@@ -1,4 +1,4 @@
-use core::{cmp::min, f32::consts::PI};
+use core::f32::consts::PI;
 
 use esp_hal::time::{Duration, Instant};
 
@@ -7,7 +7,7 @@ use crate::{
     spi_master::{FastSpiMode0, SpiPinsMaster},
 };
 
-use libm::{ceilf, cosf, floorf, roundf, sinf, sqrtf};
+use libm::{ceilf, cosf, roundf, sinf, sqrtf};
 
 /// Command to perform no operation.
 const ST77XX_NOP: u8 = 0x00;
@@ -191,13 +191,13 @@ impl<'a> St7789DisplayEngine<'a> {
         let row_start_1;
         let column_start_0;
         let column_start_1;
-        if (window_width == 240 && window_height == 240) {
+        if window_width == 240 && window_height == 240 {
             // 1.3", 1.54" displays (right justified)
             row_start_0 = 320 - window_height;
             row_start_1 = 0;
             column_start_0 = 240 - window_width;
             column_start_1 = column_start_0;
-        } else if (window_width == 135 && window_height == 240) {
+        } else if window_width == 135 && window_height == 240 {
             // 1.14" display (centered, with odd size)
             row_start_0 = (320 - window_height) / 2;
             row_start_1 = row_start_0;

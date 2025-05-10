@@ -13,8 +13,6 @@ enum TrapState {
     LowStop,
     /// The start sensor is triggered and is in a high state.
     HighStart,
-    /// The stop sensor is triggered and is in a high state.
-    HighStop,
     /// The speed trap has completed a measurement and is ready to report.
     Report,
 }
@@ -121,14 +119,14 @@ impl<'a> SpeedTrap<'a> {
     ///
     /// The calculated speed in the specified units.
     fn get_speed(&self, units: SpeedUnits) -> f64 {
-        let elapsed_nanos = self.get_elapsed_microseconds();
-        let speed = self.separation_mm / elapsed_nanos;
+        let elapsed_micros = self.get_elapsed_microseconds();
+        let speed = self.separation_mm / elapsed_micros;
         match units {
             SpeedUnits::MillimetersPerSecond => speed * 1E6,
-            SpeedUnits::MetersPerSecond => speed * (0.001 * 1E6),
-            SpeedUnits::KilometersPerHour => speed * (0.0036 * 1E6),
-            SpeedUnits::FeetPerSecond => speed * (0.00328083989501 * 1E6),
-            SpeedUnits::MilesPerHour => speed * (0.00223693629205 * 1E6),
+            SpeedUnits::MetersPerSecond => speed * (1000.0),
+            SpeedUnits::KilometersPerHour => speed * (3600.0),
+            SpeedUnits::FeetPerSecond => speed * (3280.8399),
+            SpeedUnits::MilesPerHour => speed * (2236.93629),
         }
     }
 
@@ -257,30 +255,24 @@ impl<'a> SpeedTrap<'a> {
     pub fn tick(&mut self) {
         match self.state {
             TrapState::Idle => {
-                // Write the result to the display
-                if self.input_start.is_low() {
+                if self.input_start.is_high() {
                     self.start_clock();
                     self.state = TrapState::LowStart
                 }
             }
             TrapState::LowStart => {
-                if self.input_stop.is_low() {
+                if self.input_stop.is_high() {
+                    self.stop_clock();
                     self.state = TrapState::LowStop
                 }
             }
             TrapState::LowStop => {
-                if self.input_start.is_high() {
+                if self.input_start.is_low() {
                     self.state = TrapState::HighStart
                 }
             }
             TrapState::HighStart => {
-                if self.input_stop.is_high() {
-                    self.state = TrapState::HighStop
-                }
-            }
-            TrapState::HighStop => {
-                if self.input_start.is_low() {
-                    self.stop_clock();
+                if self.input_stop.is_low() {
                     self.state = TrapState::Report
                 }
             }

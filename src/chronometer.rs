@@ -17,8 +17,14 @@ pub fn start_chronometer(peripherals: Peripherals) -> ! {
         OutputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
     );
     // Define input pins for diodes (GPIO12 and GPIO13).
-    let diode_a = Input::new(peripherals.GPIO12, InputConfig::default());
-    let diode_b = Input::new(peripherals.GPIO13, InputConfig::default());
+    let diode_a = Input::new(
+        peripherals.GPIO16,
+        InputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
+    );
+    let diode_b = Input::new(
+        peripherals.GPIO5,
+        InputConfig::default().with_pull(esp_hal::gpio::Pull::Up),
+    );
 
     let lcd_height = 240;
     let lcd_width = 135;
