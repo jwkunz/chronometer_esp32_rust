@@ -191,15 +191,24 @@ impl<'a> SpeedTrap<'a> {
         let integer_part = speed as u32;
         let fractional_part = libm::round((speed - integer_part as f64) * 1000.0) as u32; // 3 decimal places
 
-        // Write the integer part into the buffer (always 5 spaces)
+        // Write the integer part into the buffer (always 5 spaces, with at least one leading zero)
         let mut temp = integer_part;
         let mut digits = [b' '; 5]; // Fixed buffer for 5 spaces
         let mut digit_count = 0;
+
+        // Fill digits from right to left
         while temp > 0 {
             digits[4 - digit_count] = b'0' + (temp % 10) as u8;
             temp /= 10;
             digit_count += 1;
         }
+
+        // Ensure at least one leading zero if the integer part is 0
+        if digit_count == 0 {
+            digits[4] = b'0';
+        }
+
+        // Write the digits into the buffer
         for &digit in &digits {
             if index < buffer.len() {
                 buffer[index] = digit;
