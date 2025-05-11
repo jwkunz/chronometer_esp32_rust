@@ -315,7 +315,7 @@ impl<'a> SpeedTrap<'a> {
             SpeedUnits::MetersPerSecond => b" m/s ",
             SpeedUnits::KilometersPerHour => b" km/h",
             SpeedUnits::FeetPerSecond => b" fps ",
-            SpeedUnits::MilesPerHour => b" mps ",
+            SpeedUnits::MilesPerHour => b" mph ",
         };
         // Add the unit
         index = Self::append_text_to_buffer(&mut buffer, index, unit);
