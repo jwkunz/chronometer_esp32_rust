@@ -77,16 +77,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chronometer"
-version = "0.1.0"
-dependencies = [
- "critical-section",
- "esp-hal",
- "esp-println",
- "libm",
-]
-
-[[package]]
 name = "critical-section"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -557,9 +547,9 @@ dependencies = [
 
 [[package]]
 name = "libm"
-version = "0.2.13"
+version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9627da5196e5d8ed0b0495e61e518847578da83483c37288316d9b2e03a7f72"
+checksum = "f9fbbcab51052fe104eb5e5d351cf728d30a5be1fe14d9be8a3b097481fb97de"
 
 [[package]]
 name = "litrs"
@@ -774,6 +764,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87607cb1398ed59d48732e575a4c28a7a8ebf2454b964fe3f224f2afc07909e1"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "speed_trap"
+version = "0.1.0"
+dependencies = [
+ "critical-section",
+ "esp-hal",
+ "esp-println",
+ "libm",
 ]
 
 [[package]]

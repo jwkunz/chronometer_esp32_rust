@@ -1,8 +1,8 @@
 #![no_std]
 #![no_main]
 
-use chronometer::chronometer::start_chronometer;
 use esp_hal::{clock::CpuClock, main};
+use speed_trap::main_speed_trap::main_speed_trap;
 
 #[panic_handler]
 fn panic(er: &core::panic::PanicInfo) -> ! {
@@ -15,7 +15,7 @@ fn main() -> ! {
     // generator version: 0.3.1
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
-    start_chronometer(peripherals);
+    main_speed_trap(peripherals);
     //tb_st7789_display_engine(peripherals)
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-beta.0/examples/src/bin
 }

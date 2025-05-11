@@ -1,17 +1,17 @@
 [package]
 edition = "2021"
-name = "chronometer"
+name = "speed_trap"
 version = "0.1.0"
 
 [[bin]]
-name = "rust_hello_world"
+name = "speed_trap"
 path = "./src/bin/main.rs"
 
 [dependencies]
 critical-section = "1.2.0"
 esp-hal = { version = "1.0.0-beta.0", features = ["esp32", "unstable"] }
 esp-println = { version = "0.13.1", features = ["esp32", "log"] }
-libm = "0.2"
+libm = "0.2.15"
 
 [profile.dev]
 # Rust debug is too slow.
