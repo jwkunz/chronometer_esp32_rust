@@ -5,7 +5,6 @@ use esp_hal::{
 };
 
 use crate::{
-    font_64_bitmap_scalable::Glyph,
     spi_master::SpiPinsMaster,
     st7789_display_engine::{St7789DisplayEngine, Triangle, ST77XX_BLACK, ST77XX_GREEN},
 };
@@ -176,7 +175,7 @@ pub fn tb_st7789_display_engine(peripherals: Peripherals) -> ! {
             );
         }
 
-        if (loop_counter % avg_count == 0) {
+        if loop_counter % avg_count == 0 {
             // Print the render time for the current frame.
             esp_println::println!(
                 "Average FPS: { }",

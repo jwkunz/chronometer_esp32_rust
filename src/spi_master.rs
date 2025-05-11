@@ -374,6 +374,7 @@ pub struct FastSpiMode0<'a> {
 }
 
 /// Wse_data_mode determines whether to toggle the dc pin (if it exists) for data (true) or command (false)
+#[allow(clippy::needless_lifetimes)]
 impl<'a> FastSpiMode0<'a> {
     /// Fast write a u8.
     pub fn write_u8(&mut self, mut word: u8, use_data_mode: Option<bool>) {

@@ -10,69 +10,68 @@ use crate::{
 use libm::{ceilf, cosf, roundf, sinf, sqrtf};
 
 /// Command to perform no operation.
-const ST77XX_NOP: u8 = 0x00;
+pub const ST77XX_NOP: u8 = 0x00;
 /// Command to perform a software reset.
-const ST77XX_SWRESET: u8 = 0x01;
+pub const ST77XX_SWRESET: u8 = 0x01;
 /// Command to read the display ID.
-const ST77XX_RDDID: u8 = 0x04;
+pub const ST77XX_RDDID: u8 = 0x04;
 /// Command to read the display status.
-const ST77XX_RDDST: u8 = 0x09;
+pub const ST77XX_RDDST: u8 = 0x09;
 
 /// Command to enter sleep mode.
-const ST77XX_SLPIN: u8 = 0x10;
+pub const ST77XX_SLPIN: u8 = 0x10;
 /// Command to exit sleep mode.
-const ST77XX_SLPOUT: u8 = 0x11;
+pub const ST77XX_SLPOUT: u8 = 0x11;
 /// Command to enable partial mode.
-const ST77XX_PTLON: u8 = 0x12;
+pub const ST77XX_PTLON: u8 = 0x12;
 /// Command to enable normal display mode.
-const ST77XX_NORON: u8 = 0x13;
+pub const ST77XX_NORON: u8 = 0x13;
 
 /// Command to disable display inversion.
-const ST77XX_INVOFF: u8 = 0x20;
+pub const ST77XX_INVOFF: u8 = 0x20;
 /// Command to enable display inversion.
-const ST77XX_INVON: u8 = 0x21;
+pub const ST77XX_INVON: u8 = 0x21;
 /// Command to turn off the display.
-const ST77XX_DISPOFF: u8 = 0x28;
+pub const ST77XX_DISPOFF: u8 = 0x28;
 /// Command to turn on the display.
-const ST77XX_DISPON: u8 = 0x29;
+pub const ST77XX_DISPON: u8 = 0x29;
 /// Command to set the column address.
-const ST77XX_CASET: u8 = 0x2A;
+pub const ST77XX_CASET: u8 = 0x2A;
 /// Command to set the row address.
-const ST77XX_RASET: u8 = 0x2B;
+pub const ST77XX_RASET: u8 = 0x2B;
 /// Command to write data to the display RAM.
-const ST77XX_RAMWR: u8 = 0x2C;
+pub const ST77XX_RAMWR: u8 = 0x2C;
 /// Command to read data from the display RAM.
-const ST77XX_RAMRD: u8 = 0x2E;
+pub const ST77XX_RAMRD: u8 = 0x2E;
 
 /// Command to set the partial area.
-const ST77XX_PTLAR: u8 = 0x30;
+pub const ST77XX_PTLAR: u8 = 0x30;
 /// Command to disable tearing effect output.
-const ST77XX_TEOFF: u8 = 0x34;
+pub const ST77XX_TEOFF: u8 = 0x34;
 /// Command to enable tearing effect output.
-const ST77XX_TEON: u8 = 0x35;
+pub const ST77XX_TEON: u8 = 0x35;
 /// Command to set the memory access control.
-const ST77XX_MADCTL: u8 = 0x36;
+pub const ST77XX_MADCTL: u8 = 0x36;
 /// Command to set the pixel format.
-const ST77XX_COLMOD: u8 = 0x3A;
+pub const ST77XX_COLMOD: u8 = 0x3A;
 
 /// Memory access control bit for row address order.
-const ST77XX_MADCTL_MY: u8 = 0x80;
+pub const ST77XX_MADCTL_MY: u8 = 0x80;
 /// Memory access control bit for column address order.
-const ST77XX_MADCTL_MX: u8 = 0x40;
+pub const ST77XX_MADCTL_MX: u8 = 0x40;
 /// Memory access control bit for row/column exchange.
-const ST77XX_MADCTL_MV: u8 = 0x20;
+pub const ST77XX_MADCTL_MV: u8 = 0x20;
 /// Memory access control bit for vertical refresh order.
-const ST77XX_MADCTL_ML: u8 = 0x10;
+pub const ST77XX_MADCTL_ML: u8 = 0x10;
 /// Memory access control bit for RGB/BGR order.
-const ST77XX_MADCTL_RGB: u8 = 0x00;
+pub const ST77XX_MADCTL_RGB: u8 = 0x00;
 
 /// Command to read ID1.
-const ST77XX_RDID1: u8 = 0xDA;
+pub const ST77XX_RDID1: u8 = 0xDA;
 /// Command to read ID2.
-const ST77XX_RDID2: u8 = 0xDB;
+pub const ST77XX_RDID2: u8 = 0xDB;
 /// Command to read ID3.
-const ST77XX_RDID3: u8 = 0xDC;
-/// Command to read ID4: u8 = 0xDD;
+pub const ST77XX_RDID3: u8 = 0xDC;
 
 /// Type alias for 16-bit color values in RGB565 format.
 pub type Color565 = u16;
@@ -256,7 +255,7 @@ impl<'a> St7789DisplayEngine<'a> {
 
     /// Sets the display rotation based on the given mode (0-3).
     pub fn set_rotation(&mut self, m: u8) {
-        let mut madctl: u8;
+        let madctl: u8;
         match m {
             0 => {
                 madctl = ST77XX_MADCTL_MX | ST77XX_MADCTL_MY | ST77XX_MADCTL_RGB;
@@ -307,7 +306,7 @@ impl<'a> St7789DisplayEngine<'a> {
     /// Helper function for rounding and clippling f32 x pixels
     fn round_and_clip_x(&self, x: f32) -> Option<u16> {
         let rounded = roundf(x);
-        if (rounded < 0.0) {
+        if rounded < 0.0 {
             return None;
         }
         if rounded > self.window_width as f32 {
@@ -606,7 +605,6 @@ impl<'a> St7789DisplayEngine<'a> {
         let slope2 = if y3 != y1 { (x3 - x1) / (y3 - y1) } else { 0.0 };
         let slope3 = if y3 != y2 { (x3 - x2) / (y3 - y2) } else { 0.0 };
 
-        let mut y_gap;
         let mut y;
         let mut x_start;
         let mut x_end;
@@ -614,7 +612,6 @@ impl<'a> St7789DisplayEngine<'a> {
         // Fill the top part of the triangle (from y1 to y2).
         x_start = x1;
         x_end = x1;
-        y_gap = y2 - y1;
         y = y1;
         while y < y2 {
             self.trace_thin_line_start_end(x_start, y, x_end, y, color);
@@ -626,7 +623,6 @@ impl<'a> St7789DisplayEngine<'a> {
         // Fill the bottom part of the triangle (from y2 to y3).
         x_start = x2;
         x_end = x1 + slope2 * (y2 - y1);
-        y_gap = y3 - y2;
         y = y2;
         while y < y3 {
             self.trace_thin_line_start_end(x_start, y, x_end, y, color);
@@ -662,13 +658,13 @@ impl<'a> St7789DisplayEngine<'a> {
         let angle_step = 2.0 * core::f32::consts::PI / (sides as f32);
 
         // Iterate through each side of the polygon and draw the corresponding triangle.
-        let mut prev_x = center_x as f32 + radius as f32 * libm::cosf(angle_rad);
-        let mut prev_y = center_y as f32 + radius as f32 * libm::sinf(angle_rad);
+        let mut prev_x = center_x + radius * libm::cosf(angle_rad);
+        let mut prev_y = center_y + radius * libm::sinf(angle_rad);
 
         for i in 1..=sides {
             let angle = i as f32 * angle_step + angle_rad;
-            let curr_x = center_x as f32 + radius as f32 * libm::cosf(angle);
-            let curr_y = center_y as f32 + radius as f32 * libm::sinf(angle);
+            let curr_x = center_x + radius * libm::cosf(angle);
+            let curr_y = center_y + radius * libm::sinf(angle);
 
             // Draw the triangle formed by the center, the previous vertex, and the current vertex.
             self.fill_triangle(
